@@ -37,7 +37,7 @@ presient/
 
 1. Clone the repo:
 ```bash
-git clone https://github.com/YOUR_USERNAME/presient.git
+git clone https://github.com/willynikes2/presient.git
 ```
 
 2. Set up the mobile app:
