@@ -1,6 +1,15 @@
+
 # Presient
 
-**Presient** is a biometric presence authentication platform that uses mmWave radar and heartbeat signatures to recognize individual users in a smart home environment. Unlike traditional motion detectors, Presient knows *who* is home.
+**Presient** is a biometric presence authentication platform using mmWave radar and heartbeat signatures to recognize individual users in a smart home environment.
+
+![Python](https://img.shields.io/badge/python-3.11-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Dev Container](https://img.shields.io/badge/devcontainer-ready-blue)
+![GitHub Repo stars](https://img.shields.io/github/stars/YOUR_USERNAME/presient?style=social)
+[![Open in Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?template_repository=YOUR_USERNAME/presient)
+
+---
 
 ## 🌟 Features
 
@@ -22,40 +31,23 @@
 | Firmware     | ESPHome/Arduino OTA                     |
 | Integrations | MQTT, Webhooks, HealthKit/Fitbit APIs   |
 
-## 🧱 Folder Structure
-
-```bash
-presient/
-├── frontend/                # React Native app
-├── backend/                 # FastAPI server
-├── firmware/                # ESP32 firmware
-├── docs/                    # Specs, planning, diagrams
-└── README.md
-```
-
 ## 🚀 Getting Started
 
-1. Clone the repo:
+### Local Development (Docker)
+
 ```bash
-git clone https://github.com/willynikes2/presient.git
+cp backend/.env.example backend/.env
+docker-compose up --build
 ```
 
-2. Set up the mobile app:
-```bash
-cd frontend && npm install && expo start
-```
+Visit:
+- API Docs: http://localhost:8000/docs
+- pgAdmin: http://localhost:5050 (admin@presient.io / admin)
 
-3. Start the backend (local):
-```bash
-cd backend && uvicorn main:app --reload
-```
+### Browser (GitHub Codespaces)
 
-4. Flash the firmware to your mmWave sensor and test pairing.
-
-## 🤝 Contributing
-
-We’re building for open smart homes. If you're a developer, engineer, or researcher and want to contribute, reach out or submit a PR.
+Click the badge above to open the repo in your browser with full dev environment!
 
 ## 📄 License
 
-MIT License
+This project is licensed under the MIT License.
