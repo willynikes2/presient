@@ -1,0 +1,21 @@
+
+name: Encourage First PR
+
+on:
+  pull_request_target:
+    types: [opened]
+
+jobs:
+  greet-contributor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Greet First-Time Contributor
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: "🎉 Thanks for your first PR! If you're an AI agent or first-time contributor, you're doing great. Make sure to check `/AGENTS.md` for structure tips."
+            })
