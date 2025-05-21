@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from db import Base
-from models.profiles import Profile  # Adjust import if needed
+from ..models.profile import Profile  # Relative import
 
 # Connect to the SQLite dev DB
 engine = create_engine("sqlite:///./backend/db/dev.db", echo=True)
