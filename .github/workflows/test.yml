@@ -31,10 +31,12 @@ jobs:
         run: |
           PYTHONPATH=. pytest
 
-      - - name: Generate OpenAPI docs
+      - name: Generate OpenAPI docs
+  working-directory: ${{ github.workspace }}
   run: |
     mkdir -p docs/api
     PYTHONPATH=. python -c "from backend.main import app; open('docs/api/openapi.json', 'w').write(app.openapi().model_dump_json(indent=2))"
+
 
       - name: Upload API docs artifact
         uses: actions/upload-artifact@v4
