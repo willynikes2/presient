@@ -22,7 +22,7 @@ def test_presence_event(monkeypatch):
         "user_id": "user123",
         "sensor_id": "sensorABC",
         "confidence": 0.87,
-        "timestamp": datetime.datetime.utcnow().isoformat()
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat()
     }
 
     response = client.post("/presence/event", json=data)
