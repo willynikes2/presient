@@ -1,3 +1,5 @@
 {
-  "python.analysis.extraPaths": ["./backend"]
+    "python.analysis.extraPaths": [
+        "${workspaceFolder}"
+    ]
 }
