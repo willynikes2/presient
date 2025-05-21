@@ -19,7 +19,7 @@ fileConfig(config.config_file_name)
 target_metadata = Base.metadata
 
 def run_migrations_offline():
-    url = config.get_main_option("sqlalchemy.url")
+url = "sqlite:///./backend/db/dev.db"
     context.configure(
         url=url,
         target_metadata=target_metadata,
