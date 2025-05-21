@@ -2,9 +2,9 @@ from fastapi.testclient import TestClient
 from backend.main import app
 import datetime
 import pytest
+import backend.routes.presence as presence_module
 
 client = TestClient(app)
-
 
 def test_presence_event(monkeypatch):
     published = {}
@@ -13,9 +13,9 @@ def test_presence_event(monkeypatch):
         published['topic'] = topic
         published['payload'] = payload
 
-    # Mock the mqtt_client.publish
-import backend.routes.presence as presence_module
-monkeypatch.setattr(presence_module.mqtt_client, "publish", mock_publish)
+    # Patch the mqtt_client.publish function inside the presence module
+    monkeypatch.setattr(presence_module.mqtt_client, "publish", mock_publish)
+
     data = {
         "user_id": "user123",
         "sensor_id": "sensorABC",
