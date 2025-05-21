@@ -1,3 +1,2 @@
-
-from backend.models.profiles import Profile
-from backend.models.presence_events import PresenceEvent
+from .profiles import Profile
+from .presence_events import PresenceEvent
