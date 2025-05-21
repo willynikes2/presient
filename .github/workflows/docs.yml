@@ -9,24 +9,25 @@ jobs:
   build-docs:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+      - uses: actions/checkout@v3
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
 
-    - name: Install FastAPI + Uvicorn
-      run: |
-        pip install fastapi[all]
+      - name: Install FastAPI
+        run: |
+          pip install fastapi[all]
 
-    - name: Extract OpenAPI schema
-      run: |
-        mkdir -p docs/api
-        echo 'from main import app; import json; open("docs/api/openapi.json", "w").write(app.openapi_json())' | python
+      - name: Generate OpenAPI JSON
+        run: |
+          mkdir -p docs/api
+          cd backend
+          echo 'from main import app; import json; open("../docs/api/openapi.json", "w").write(app.openapi_json())' | python
 
-    - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./docs/api
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs/api
