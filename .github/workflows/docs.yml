@@ -1,4 +1,3 @@
-
 name: Publish API Docs
 
 on:
@@ -16,9 +15,10 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: Install FastAPI
+      - name: Install project dependencies
+        working-directory: ./backend
         run: |
-          pip install fastapi[all]
+          pip install -r requirements.txt
 
       - name: Generate OpenAPI JSON
         run: |
