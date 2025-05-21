@@ -1,12 +1,7 @@
-
 from fastapi import FastAPI
-from routes import sensors
+from backend.routes import presence  # Import the new module
 
-app = FastAPI(title="Presient API", version="0.1.0")
+app = FastAPI()
 
-# Include sensor routes
-app.include_router(sensors.router, prefix="/sensors", tags=["Sensors"])
-
-@app.get("/")
-def read_root():
-    return {"message": "Presient backend is running!"}
+# Include the presence route
+app.include_router(presence.router)
