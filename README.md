@@ -1,3 +1,4 @@
+![Tests](https://github.com/willynikes2/presient/actions/workflows/test.yml/badge.svg)
 
 # Presient
 
