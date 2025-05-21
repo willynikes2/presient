@@ -46,13 +46,10 @@ jobs:
           PYTHONPATH=$(pwd) python -c "import backend; print('Backend module imported successfully')"
       
       - name: Generate OpenAPI docs
-        run: |
-          mkdir -p docs/api
-          export PYTHONPATH=$(pwd)
-          echo "Current PYTHONPATH: $PYTHONPATH"
-          echo "Attempting to import from backend.main..."
-          python -c "import sys; print(sys.path); import backend; print('Backend imported'); from backend.main import app; print('App imported')"
-          python -c "from backend.main import app; open('docs/api/openapi.json', 'w').write(app.openapi().model_dump_json(indent=2))"
+  run: |
+    mkdir -p docs/api
+    python scripts/export_openapi.py
+
         continue-on-error: true
       
       - name: Run tests
