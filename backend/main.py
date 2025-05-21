@@ -1,7 +1,10 @@
 from fastapi import FastAPI
-from backend.routes import presence  # Import the new module
+from backend.routes import presence
 
 app = FastAPI()
 
-# Include the presence route
+@app.get("/")
+def read_root():
+    return {"message": "Presient API is alive"}
+
 app.include_router(presence.router)
