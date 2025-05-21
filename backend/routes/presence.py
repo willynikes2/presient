@@ -1,18 +1,25 @@
-
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from db import SessionLocal
+from backend.schemas.presence import PresenceEvent
+import json
+import logging
+
+# Assume mqtt_client is available via some DI mechanism
+from backend.services.mqtt import mqtt_client
 
 router = APIRouter()
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
-@router.post("/report")
-def report_presence(data: dict, db: Session = Depends(get_db)):
-    # TODO: Add matching logic, MQTT publishing
-    return {"status": "presence received", "data": data}
+@router.post("/presence/event")
+async def presence_event(event: PresenceEvent):
+    # Log the event
+    print(
+        f"User {event.user_id} detected by {event.sensor_id} "
+        f"with {event.confidence * 100:.2f}% confidence at {event.timestamp.isoformat()}"
+    )
+
+    # Publish to MQTT
+    topic = f"presient/presence/{event.sensor_id}"
+    payload = json.dumps(event.dict())
+    mqtt_client.publish(topic, payload)
+
+    return {"status": "ok"}
