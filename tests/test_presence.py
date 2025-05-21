@@ -14,8 +14,8 @@ def test_presence_event(monkeypatch):
         published['payload'] = payload
 
     # Mock the mqtt_client.publish
-    monkeypatch.setattr("backend.routes.presence.mqtt_client.publish", mock_publish)
-
+import backend.routes.presence as presence_module
+monkeypatch.setattr(presence_module.mqtt_client, "publish", mock_publish)
     data = {
         "user_id": "user123",
         "sensor_id": "sensorABC",
