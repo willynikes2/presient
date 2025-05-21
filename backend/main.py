@@ -5,6 +5,6 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-    return {"message": "Presient API is alive"}
+    return {"message": "Hello, World!"}
 
 app.include_router(presence.router)
