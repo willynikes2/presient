@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from uuid import UUID
 from backend.schemas.profiles import ProfileCreate, ProfileUpdate, ProfileOut
-from backend.models.profiles import Profile
+from backend.models.profile import Profile
 from backend.dependencies import get_db
 
 router = APIRouter(prefix="/profiles", tags=["Profiles"])
