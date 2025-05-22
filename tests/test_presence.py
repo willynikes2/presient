@@ -1,10 +1,13 @@
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from fastapi.testclient import TestClient
 from backend.main import app
 import datetime
 import pytest
+import backend.routes.presence as presence_module
 
 client = TestClient(app)
-
 
 def test_presence_event(monkeypatch):
     published = {}
@@ -13,14 +16,17 @@ def test_presence_event(monkeypatch):
         published['topic'] = topic
         published['payload'] = payload
 
-    # Mock the mqtt_client.publish
-    monkeypatch.setattr("backend.routes.presence.mqtt_client.publish", mock_publish)
+    monkeypatch.setattr(presence_module.mqtt_client, "publish", mock_publish)
 
     data = {
         "user_id": "user123",
         "sensor_id": "sensorABC",
         "confidence": 0.87,
+<<<<<<< HEAD
         "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+=======
+        "timestamp": datetime.datetime.now(datetime.UTC).isoformat()
+>>>>>>> d0aee7c15f003d5e9a37838a3fcd9bf4b258c668
     }
 
     response = client.post("/presence/event", json=data)

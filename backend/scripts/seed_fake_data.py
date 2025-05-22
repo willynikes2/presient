@@ -6,11 +6,19 @@ import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+<<<<<<< HEAD
 # Fix Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from backend.db import Base
 from ..models.profile import Profile
+=======
+# Add backend to path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from db import Base
+from ..models.profile import Profile  # Relative import
+>>>>>>> d0aee7c15f003d5e9a37838a3fcd9bf4b258c668
 
 # Connect to the SQLite dev DB
 engine = create_engine("sqlite:///./backend/db/dev.db", echo=True)
