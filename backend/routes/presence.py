@@ -1,13 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from backend.schemas.presence import PresenceEvent
 import json
-import logging
-
-# Assume mqtt_client is available via some DI mechanism
 from backend.services.mqtt import mqtt_client
 
 router = APIRouter()
-
 
 @router.post("/presence/event")
 async def presence_event(event: PresenceEvent):
@@ -19,7 +15,8 @@ async def presence_event(event: PresenceEvent):
 
     # Publish to MQTT
     topic = f"presient/presence/{event.sensor_id}"
-    payload = json.dumps(event.dict())
+    payload = json.dumps(event.model_dump(), default=str)
+
     mqtt_client.publish(topic, payload)
 
     return {"status": "ok"}

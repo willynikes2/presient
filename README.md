@@ -1,4 +1,6 @@
 
+![Tests](https://github.com/willynikes2/presient/actions/workflows/test.yml/badge.svg)
+
 # Presient
 
 **Presient** is a biometric presence authentication platform using mmWave radar and heartbeat signatures to recognize individual users in a smart home environment.
