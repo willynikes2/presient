@@ -11,4 +11,4 @@ class PresenceEvent(Base):
     user_id = Column(String, nullable=False)
     sensor_id = Column(String, nullable=False)
     confidence = Column(Float, nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utc)
+    timestamp = Column(DateTime, default=datetime.utcnow)
