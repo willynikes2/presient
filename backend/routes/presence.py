@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from typing import List
 import json
 import uuid
+
 from backend.schemas.presence import PresenceEvent, PresenceEventOut
-from backend.db import get_db
+from backend.db.session import get_db
 from backend.models.presence_events import PresenceEvent as PresenceEventModel
 from backend.services.mqtt import mqtt_client
 
