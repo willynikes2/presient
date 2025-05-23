@@ -1,35 +1,56 @@
-import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
-from fastapi.testclient import TestClient
-from backend.main import app
-import datetime
 import pytest
-import backend.routes.presence as presence_module
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+import sys
+import os
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from backend.main import app
+from backend.db.base import Base, get_db
+
+# Create test database
+SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+def override_get_db():
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
+# Override the database dependency
+app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
 
-def test_presence_event(monkeypatch):
-    published = {}
-
-    def mock_publish(topic, payload):
-        published['topic'] = topic
-        published['payload'] = payload
-
-    monkeypatch.setattr(presence_module.mqtt_client, "publish", mock_publish)
-
-    data = {
-        "user_id": "user123",
-        "sensor_id": "sensorABC",
-        "confidence": 0.87,
-<<<<<<< HEAD
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-=======
-        "timestamp": datetime.datetime.now(datetime.UTC).isoformat()
->>>>>>> d0aee7c15f003d5e9a37838a3fcd9bf4b258c668
-    }
-
-    response = client.post("/presence/event", json=data)
+def test_read_root():
+    response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
-    assert published["topic"] == "presient/presence/sensorABC"
+    assert response.json() == {"message": "Hello, World!"}
+
+def test_create_presence_event():
+    response = client.post(
+        "/presence/event",
+        json={
+            "user_id": "test_user",
+            "sensor_id": "test_sensor",
+            "confidence": 0.95
+        }
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == "test_user"
+    assert data["sensor_id"] == "test_sensor"
+    assert data["confidence"] == 0.95
+
+# Cleanup
+def teardown_module():
+    os.remove("test.db") if os.path.exists("test.db") else None
