@@ -12,7 +12,6 @@ from backend.db import engine, Base
 # Import models to register them (do this before creating tables)
 import backend.models.profile
 import backend.models.presence_events
-import backend.models.sensor
 
 # Import custom exception handlers
 from backend.utils.exceptions import (
