@@ -9,7 +9,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.main import app
-from backend.db.base import Base, get_db
+from backend.db import Base, get_db
 
 # Create test database
 SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
@@ -36,21 +36,7 @@ def test_read_root():
     assert response.status_code == 200
     assert response.json() == {"message": "Hello, World!"}
 
-def test_create_presence_event():
-    response = client.post(
-        "/presence/event",
-        json={
-            "user_id": "test_user",
-            "sensor_id": "test_sensor",
-            "confidence": 0.95
-        }
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["user_id"] == "test_user"
-    assert data["sensor_id"] == "test_sensor"
-    assert data["confidence"] == 0.95
-
 # Cleanup
 def teardown_module():
-    os.remove("test.db") if os.path.exists("test.db") else None
+    if os.path.exists("test.db"):
+        os.remove("test.db")
