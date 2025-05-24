@@ -1,4 +1,5 @@
 # mosquitto.conf - MQTT Broker Configuration for Presient
+# Place this file in your project root directory
 
 # Basic Configuration
 listener 1883
@@ -19,14 +20,19 @@ log_type information
 # Connection settings
 max_connections -1
 max_queued_messages 1000
-max_packet_size 0
+message_size_limit 0
 
-# WebSocket support
+# Security (for production, set allow_anonymous false and add users)
+# allow_anonymous false
+# password_file /mosquitto/config/passwd
+
+# WebSocket support (optional, for web clients)
 listener 9001
 protocol websockets
 
 # Retained message settings
 max_inflight_messages 20
+max_queued_messages 1000
 
 # Auto-save interval (seconds)
 autosave_interval 1800
