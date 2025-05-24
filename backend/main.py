@@ -1,10 +1,12 @@
 # backend/main.py
 import logging
 import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError, DataError
 
 # Import database components
 from backend.db import engine, Base
@@ -61,8 +63,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# SQLAlchemy Exception Handlers
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    """Handle database integrity violations (unique constraints, foreign keys, etc.)"""
+    logger.error(
+        f"Database integrity error on {request.method} {request.url}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "url": str(request.url),
+            "exception_type": type(exc).__name__,
+            "client_ip": request.client.host if request.client else None
+        }
+    )
+    return JSONResponse(
+        status_code=409,  # Conflict
+        content={
+            "error": {
+                "status_code": 409,
+                "message": "Database integrity constraint violation",
+                "type": "integrity_error",
+                "details": {"error_type": "IntegrityError"}
+            }
+        }
+    )
+
+@app.exception_handler(OperationalError)
+async def operational_error_handler(request: Request, exc: OperationalError):
+    """Handle database operational errors (connection issues, timeouts, etc.)"""
+    logger.error(
+        f"Database operational error on {request.method} {request.url}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "url": str(request.url),
+            "exception_type": type(exc).__name__,
+            "client_ip": request.client.host if request.client else None
+        }
+    )
+    return JSONResponse(
+        status_code=503,  # Service Unavailable
+        content={
+            "error": {
+                "status_code": 503,
+                "message": "Database service temporarily unavailable",
+                "type": "operational_error",
+                "details": {"error_type": "OperationalError"}
+            }
+        }
+    )
+
+@app.exception_handler(SQLAlchemyError)
+async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
+    """Handle all other SQLAlchemy errors"""
+    logger.error(
+        f"SQLAlchemy error on {request.method} {request.url}: {str(exc)}",
+        exc_info=True,
+        extra={
+            "method": request.method,
+            "url": str(request.url),
+            "exception_type": type(exc).__name__,
+            "client_ip": request.client.host if request.client else None
+        }
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "status_code": 500,
+                "message": "A database error occurred",
+                "type": "sqlalchemy_error",
+                "details": {"error_type": type(exc).__name__}
+            }
+        }
+    )
+
 # STEP 3: Add exception handlers (order matters - more specific first)
-# Custom exception handlers first
+# Database-specific handlers are already added above
+
+# Custom exception handlers
 app.add_exception_handler(DatabaseException, custom_database_error_handler)
 app.add_exception_handler(ValidationException, custom_validation_error_handler)
 
@@ -147,12 +227,31 @@ async def test_custom_http_error():
         context={"resource_id": "12345", "conflicting_field": "name"}
     )
 
+@app.get("/test/sqlalchemy-integrity")
+async def test_sqlalchemy_integrity_error():
+    """Test endpoint for SQLAlchemy IntegrityError."""
+    logger.info("Test SQLAlchemy IntegrityError endpoint accessed")
+    raise IntegrityError("Duplicate key value violates unique constraint", None, None)
+
+@app.get("/test/sqlalchemy-operational")
+async def test_sqlalchemy_operational_error():
+    """Test endpoint for SQLAlchemy OperationalError."""
+    logger.info("Test SQLAlchemy OperationalError endpoint accessed")
+    raise OperationalError("Connection to database failed", None, None)
+
+@app.get("/test/sqlalchemy-general")
+async def test_sqlalchemy_general_error():
+    """Test endpoint for general SQLAlchemy error."""
+    logger.info("Test SQLAlchemy general error endpoint accessed")
+    raise SQLAlchemyError("General SQLAlchemy error occurred")
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     """Application startup event."""
     logger.info("🚀 Presient API starting up...")
     logger.info("Exception handlers configured")
+    logger.info("SQLAlchemy error handlers enabled")
     logger.info("CORS middleware enabled")
     logger.info("Database tables initialized")
 
