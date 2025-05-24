@@ -7,13 +7,28 @@ Demonstrates various use cases for the PresientDB time-series database
 import json
 import time
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import paho.mqtt.client as mqtt
 
 # MQTT Configuration
-MQTT_BROKER = "localhost"
+MQTT_BROKER = "localhost"  # Change to "mosquitto" if running in Docker
 MQTT_PORT = 1883
 BASE_TOPIC = "presient"
+
+# Try to detect if we should use Docker hostname
+import socket
+try:
+    # Test connection to localhost
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    result = sock.connect_ex(('localhost', MQTT_PORT))
+    sock.close()
+    if result != 0:
+        # If localhost fails, try Docker service name
+        MQTT_BROKER = "mosquitto"
+        print(f"ℹ️  Using Docker hostname: {MQTT_BROKER}")
+except:
+    pass
 
 class PresientExample:
     """Base class for PresientDB examples"""
@@ -43,15 +58,20 @@ class PresientExample:
         except:
             print(f"   Data: {msg.payload.decode()}")
     
-    def on_publish(self, client, userdata, mid):
+    def on_publish(self, client, userdata, mid, reason_code=None, properties=None):
         """Callback for when a message is published"""
-        print(f"📤 Message {mid} published")
+        print(f"📤 Message {mid} published successfully")
     
     def connect(self):
         """Connect to the MQTT broker"""
-        self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        self.client.loop_start()
-        time.sleep(1)  # Give it time to connect
+        try:
+            self.client.connect(MQTT_BROKER, MQTT_PORT, 60)
+            self.client.loop_start()
+            time.sleep(1)  # Give it time to connect
+        except Exception as e:
+            print(f"❌ Connection failed: {e}")
+            print(f"   Make sure the MQTT broker is running on {MQTT_BROKER}:{MQTT_PORT}")
+            raise
 
 # Example 1: Basic Sensor Data Ingestion
 def example_sensor_data():
@@ -84,7 +104,7 @@ def example_sensor_data():
                 "temperature": round(temperature, 2),
                 "humidity": round(humidity, 2)
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
         # Publish to PresientDB
@@ -113,8 +133,8 @@ def example_time_queries():
         "fields": ["temperature", "humidity"],
         "tags": {"location": "living-room"},
         "time_range": {
-            "start": (datetime.utcnow() - timedelta(hours=1)).isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "start": (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat()
         }
     }
     
@@ -133,8 +153,8 @@ def example_time_queries():
             "group_by": ["location"]
         },
         "time_range": {
-            "start": (datetime.utcnow() - timedelta(days=1)).isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "start": (datetime.now(timezone.utc) - timedelta(days=1)).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat()
         }
     }
     
@@ -157,7 +177,7 @@ def example_batch_import():
     
     # Generate batch of historical data
     batch_data = []
-    base_time = datetime.utcnow() - timedelta(hours=24)
+    base_time = datetime.now(timezone.utc) - timedelta(hours=24)
     
     for i in range(50):
         timestamp = base_time + timedelta(minutes=i*30)
@@ -222,7 +242,7 @@ def example_realtime_monitor():
                         "sensor": data.get('tags', {}).get('sensor_id', 'unknown'),
                         "value": temp,
                         "threshold": self.threshold_temp,
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     }
                     client.publish(f"{BASE_TOPIC}/alerts/temperature", json.dumps(alert))
                 else:
@@ -259,8 +279,8 @@ def example_data_export():
         "measurement": "environmental",
         "fields": ["temperature", "humidity"],
         "time_range": {
-            "start": (datetime.utcnow() - timedelta(days=7)).isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "start": (datetime.now(timezone.utc) - timedelta(days=7)).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat()
         },
         "output": "weekly_environmental_data.csv"
     }
@@ -280,8 +300,8 @@ def example_data_export():
             "interval": "1d"
         },
         "time_range": {
-            "start": (datetime.utcnow() - timedelta(days=30)).isoformat(),
-            "end": datetime.utcnow().isoformat()
+            "start": (datetime.now(timezone.utc) - timedelta(days=30)).isoformat(),
+            "end": datetime.now(timezone.utc).isoformat()
         },
         "output": "monthly_power_average.json"
     }
