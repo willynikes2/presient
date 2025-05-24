@@ -49,7 +49,7 @@ class ValidationException(Exception):
 
 async def http_error_handler(request: Request, exc: Union[HTTPException, StarletteHTTPException]) -> JSONResponse:
     """
-    Global HTTP error handler with logging.
+    Global HTTP error handler with logging and traceback for debugging.
     
     Args:
         request: The FastAPI request object
@@ -58,9 +58,11 @@ async def http_error_handler(request: Request, exc: Union[HTTPException, Starlet
     Returns:
         JSONResponse with error details
     """
-    # Log the exception with context
+    # Log the exception with traceback for better debugging
+    # Include traceback for all HTTP errors to help with debugging
     logger.error(
         f"HTTP {exc.status_code} error on {request.method} {request.url}: {exc.detail}",
+        exc_info=True,  # Always include traceback for debugging
         extra={
             "status_code": exc.status_code,
             "method": request.method,
@@ -99,7 +101,7 @@ async def http_error_handler(request: Request, exc: Union[HTTPException, Starlet
 
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """
-    Handle Pydantic validation errors (422 status).
+    Handle Pydantic validation errors (422 status) with traceback for debugging.
     
     Args:
         request: The FastAPI request object
@@ -108,9 +110,10 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     Returns:
         JSONResponse with validation error details
     """
-    # Log validation errors
+    # Log validation errors with traceback for debugging
     logger.warning(
         f"Validation error on {request.method} {request.url}: {len(exc.errors())} validation errors",
+        exc_info=True,  # Include traceback for debugging validation issues
         extra={
             "method": request.method,
             "url": str(request.url),
@@ -147,7 +150,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 async def custom_database_error_handler(request: Request, exc: DatabaseException) -> JSONResponse:
     """
-    Handle custom database exceptions.
+    Handle custom database exceptions with traceback.
     
     Args:
         request: The FastAPI request object
@@ -156,9 +159,10 @@ async def custom_database_error_handler(request: Request, exc: DatabaseException
     Returns:
         JSONResponse with database error details
     """
-    # Log database errors as errors since they're more serious
+    # Log database errors with full traceback for debugging
     logger.error(
         f"Database error on {request.method} {request.url}: {exc.message}",
+        exc_info=True,  # Include traceback for database debugging
         extra={
             "method": request.method,
             "url": str(request.url),
@@ -189,7 +193,7 @@ async def custom_database_error_handler(request: Request, exc: DatabaseException
 
 async def custom_validation_error_handler(request: Request, exc: ValidationException) -> JSONResponse:
     """
-    Handle custom validation exceptions.
+    Handle custom validation exceptions with traceback.
     
     Args:
         request: The FastAPI request object
@@ -198,9 +202,10 @@ async def custom_validation_error_handler(request: Request, exc: ValidationExcep
     Returns:
         JSONResponse with validation error details
     """
-    # Log custom validation errors
+    # Log custom validation errors with traceback for debugging
     logger.warning(
         f"Custom validation error on {request.method} {request.url}: {exc.message}",
+        exc_info=True,  # Include traceback for validation debugging
         extra={
             "method": request.method,
             "url": str(request.url),
@@ -231,7 +236,7 @@ async def custom_validation_error_handler(request: Request, exc: ValidationExcep
 
 async def general_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
-    Handle all other unhandled exceptions.
+    Handle all other unhandled exceptions with full traceback.
     
     Args:
         request: The FastAPI request object
@@ -240,10 +245,10 @@ async def general_exception_handler(request: Request, exc: Exception) -> JSONRes
     Returns:
         JSONResponse with generic error message
     """
-    # Log unhandled exceptions as critical
+    # Log unhandled exceptions as critical with full traceback
     logger.critical(
         f"Unhandled exception on {request.method} {request.url}: {str(exc)}",
-        exc_info=True,
+        exc_info=True,  # Always include full traceback for unhandled exceptions
         extra={
             "method": request.method,
             "url": str(request.url),
