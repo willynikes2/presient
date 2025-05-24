@@ -1,0 +1,53 @@
+# docker-compose.mqtt.yml
+# MQTT Broker setup for Presient project
+# Run with: docker-compose -f docker-compose.mqtt.yml up -d
+
+version: '3.8'
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    container_name: presient-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT port
+      - "9001:9001"     # WebSocket port
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-logs:/mosquitto/log
+    networks:
+      - presient-network
+    environment:
+      - TZ=UTC
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -t test -m 'health check' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: MQTT Client for testing/monitoring
+  mqtt-explorer:
+    image: smeagolworms4/mqtt-explorer
+    container_name: presient-mqtt-explorer
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mosquitto
+    networks:
+      - presient-network
+    environment:
+      - HTTP_PORT=4000
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=1883
+
+volumes:
+  mosquitto-data:
+    driver: local
+  mosquitto-logs:
+    driver: local
+
+networks:
+  presient-network:
+    driver: bridge

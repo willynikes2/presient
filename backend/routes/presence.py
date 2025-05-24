@@ -1,44 +1,265 @@
-from fastapi import APIRouter, Depends
+# backend/routes/presence.py
+import logging
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from typing import List
-import json
-import uuid
+from pydantic import BaseModel
+from datetime import datetime
+from typing import Optional
 
-from backend.schemas.presence import PresenceEvent, PresenceEventOut
-from backend.db.session import get_db
-from backend.models.presence_events import PresenceEvent as PresenceEventModel
-from backend.services.mqtt import mqtt_client
+from backend.db import get_db
+from backend.models.presence_events import PresenceEvent
+from backend.models.profile import Profile
+from backend.services.mqtt import mqtt_publisher
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/presence/event")
-async def presence_event(event: PresenceEvent, db: Session = Depends(get_db)):
-    print(
-        f"User {event.user_id} detected by {event.sensor_id} "
-        f"with {event.confidence * 100:.2f}% confidence at {event.timestamp}"
-    )
 
-    new_event = PresenceEventModel(
-        id=str(uuid.uuid4()),
-        user_id=event.user_id,
-        sensor_id=event.sensor_id,
-        confidence=event.confidence,
-        timestamp=event.timestamp,
-    )
-    db.add(new_event)
-    db.commit()
-
-    topic = f"presient/presence/{event.sensor_id}"
-    payload = json.dumps({
-        "user_id": event.user_id,
-        "confidence": event.confidence,
-        "timestamp": event.timestamp.isoformat(),
-    })
-    mqtt_client.publish(topic, payload)
-
-    return {"status": "ok"}
+class PresenceEventCreate(BaseModel):
+    """Schema for creating presence events."""
+    user_id: str
+    sensor_id: str
+    confidence: float
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "user_id": "user123",
+                "sensor_id": "sensor001",
+                "confidence": 0.95
+            }
+        }
 
 
-@router.get("/presence/events", response_model=List[PresenceEventOut])
-def list_presence_events(db: Session = Depends(get_db)):
-    return db.query(PresenceEventModel).all()
+class PresenceEventResponse(BaseModel):
+    """Schema for presence event responses."""
+    id: str
+    user_id: str
+    sensor_id: str
+    confidence: float
+    timestamp: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+@router.post("/event", response_model=PresenceEventResponse)
+async def create_presence_event(
+    event_data: PresenceEventCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new presence detection event.
+    
+    This endpoint receives presence detection data from sensors and:
+    1. Stores the event in the database
+    2. Publishes the event to MQTT for real-time integrations
+    3. Returns the created event details
+    """
+    logger.info(f"Creating presence event for user {event_data.user_id}")
+    
+    try:
+        # Create presence event
+        presence_event = PresenceEvent(
+            user_id=event_data.user_id,
+            sensor_id=event_data.sensor_id,
+            confidence=event_data.confidence,
+            timestamp=datetime.utcnow()
+        )
+        
+        # Save to database
+        db.add(presence_event)
+        db.commit()
+        db.refresh(presence_event)
+        
+        logger.info(f"Presence event {presence_event.id} created successfully")
+        
+        # Try to get profile information for richer MQTT payload
+        profile = None
+        try:
+            profile = db.query(Profile).filter(Profile.id == event_data.user_id).first()
+        except Exception as e:
+            logger.warning(f"Could not fetch profile for user {event_data.user_id}: {e}")
+        
+        # Publish to MQTT (non-blocking)
+        try:
+            await mqtt_publisher.publish_presence_event(presence_event, profile)
+            logger.debug(f"Published presence event {presence_event.id} to MQTT")
+        except Exception as e:
+            # Log MQTT errors but don't fail the API request
+            logger.error(f"Failed to publish presence event to MQTT: {e}")
+        
+        return presence_event
+        
+    except Exception as e:
+        logger.error(f"Error creating presence event: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create presence event")
+
+
+@router.get("/events")
+async def list_presence_events(
+    limit: int = 100,
+    offset: int = 0,
+    user_id: Optional[str] = None,
+    sensor_id: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    List presence events with optional filtering.
+    
+    Args:
+        limit: Maximum number of events to return (default: 100)
+        offset: Number of events to skip (default: 0)
+        user_id: Filter by specific user ID
+        sensor_id: Filter by specific sensor ID
+    """
+    logger.info(f"Listing presence events (limit={limit}, offset={offset})")
+    
+    try:
+        query = db.query(PresenceEvent)
+        
+        # Apply filters
+        if user_id:
+            query = query.filter(PresenceEvent.user_id == user_id)
+        if sensor_id:
+            query = query.filter(PresenceEvent.sensor_id == sensor_id)
+        
+        # Order by timestamp (newest first) and apply pagination
+        events = query.order_by(PresenceEvent.timestamp.desc()).offset(offset).limit(limit).all()
+        
+        return {
+            "events": events,
+            "count": len(events),
+            "limit": limit,
+            "offset": offset
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing presence events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve presence events")
+
+
+@router.get("/events/{event_id}")
+async def get_presence_event(
+    event_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a specific presence event by ID."""
+    logger.info(f"Retrieving presence event {event_id}")
+    
+    try:
+        event = db.query(PresenceEvent).filter(PresenceEvent.id == event_id).first()
+        
+        if not event:
+            raise HTTPException(status_code=404, detail="Presence event not found")
+        
+        return event
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving presence event {event_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve presence event")
+
+
+@router.post("/test-mqtt")
+async def test_mqtt_publication():
+    """
+    Test endpoint to publish a sample presence event to MQTT.
+    Useful for testing MQTT integration without creating database records.
+    """
+    logger.info("Testing MQTT publication")
+    
+    if not mqtt_publisher.connected:
+        raise HTTPException(status_code=503, detail="MQTT not connected")
+    
+    try:
+        # Create a mock presence event for testing
+        test_event = PresenceEvent(
+            id="test-event-123",
+            user_id="test-user",
+            sensor_id="test-sensor",
+            confidence=0.85,
+            timestamp=datetime.utcnow()
+        )
+        
+        # Create a mock profile
+        test_profile = Profile(
+            id="test-user",
+            name="Test User"
+        )
+        
+        # Publish to MQTT
+        await mqtt_publisher.publish_presence_event(test_event, test_profile)
+        
+        return {
+            "success": True,
+            "message": "Test presence event published to MQTT",
+            "event_id": test_event.id
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in MQTT test publication: {e}")
+        raise HTTPException(status_code=500, detail=f"MQTT test failed: {str(e)}")
+
+
+@router.post("/sensors/{sensor_id}/register")
+async def register_sensor(
+    sensor_id: str,
+    location: Optional[str] = None,
+    capabilities: Optional[dict] = None
+):
+    """
+    Register a new sensor with the system.
+    This publishes sensor registration information to MQTT.
+    """
+    logger.info(f"Registering sensor {sensor_id}")
+    
+    try:
+        sensor_data = {
+            "location": location,
+            "capabilities": capabilities or {},
+            "registration_time": datetime.utcnow().isoformat()
+        }
+        
+        # Publish sensor registration to MQTT
+        if mqtt_publisher.connected:
+            await mqtt_publisher.publish_sensor_registration(sensor_id, sensor_data)
+        
+        return {
+            "success": True,
+            "message": f"Sensor {sensor_id} registered successfully",
+            "sensor_id": sensor_id,
+            "mqtt_published": mqtt_publisher.connected
+        }
+        
+    except Exception as e:
+        logger.error(f"Error registering sensor {sensor_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to register sensor")
+
+
+@router.post("/sensors/{sensor_id}/heartbeat")
+async def sensor_heartbeat(sensor_id: str):
+    """
+    Receive heartbeat/keepalive from a sensor.
+    Publishes heartbeat to MQTT for monitoring.
+    """
+    logger.debug(f"Heartbeat received from sensor {sensor_id}")
+    
+    try:
+        # Publish heartbeat to MQTT
+        if mqtt_publisher.connected:
+            await mqtt_publisher.publish_heartbeat(sensor_id)
+        
+        return {
+            "success": True,
+            "message": "Heartbeat received",
+            "sensor_id": sensor_id,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing heartbeat from sensor {sensor_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to process heartbeat")

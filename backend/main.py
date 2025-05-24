@@ -28,6 +28,9 @@ from backend.utils.exceptions import (
     CustomHTTPException
 )
 
+# Import MQTT service
+from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
+
 # Configure logging to stdout
 logging.basicConfig(
     level=logging.INFO,
@@ -173,8 +176,51 @@ async def health_check():
     return {
         "status": "healthy",
         "database": "connected",
+        "mqtt": "connected" if mqtt_publisher.connected else "disconnected",
         "version": "1.0.0"
     }
+
+@app.get("/mqtt/status")
+async def mqtt_status():
+    """Get MQTT connection status."""
+    logger.info("MQTT status endpoint accessed")
+    return {
+        "enabled": mqtt_publisher.enabled,
+        "connected": mqtt_publisher.connected,
+        "broker": f"{mqtt_publisher.broker_host}:{mqtt_publisher.broker_port}",
+        "base_topic": mqtt_publisher.base_topic
+    }
+
+@app.post("/mqtt/test-publish")
+async def test_mqtt_publish():
+    """Test MQTT publishing with a sample message."""
+    logger.info("MQTT test publish endpoint accessed")
+    
+    if not mqtt_publisher.connected:
+        raise HTTPException(status_code=503, detail="MQTT not connected")
+    
+    try:
+        test_data = {
+            "test": True,
+            "message": "Hello from Presient API",
+            "timestamp": "2025-01-01T12:00:00Z"
+        }
+        
+        await mqtt_publisher.publish(
+            f"{mqtt_publisher.base_topic}/test",
+            str(test_data),
+            retain=False
+        )
+        
+        return {
+            "success": True,
+            "message": "Test message published to MQTT",
+            "topic": f"{mqtt_publisher.base_topic}/test"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in MQTT test publish: {e}")
+        raise HTTPException(status_code=500, detail=f"MQTT publish failed: {str(e)}")
 
 # Test endpoints for exception handling validation
 @app.get("/test/400")
@@ -254,12 +300,18 @@ async def startup_event():
     logger.info("SQLAlchemy error handlers enabled")
     logger.info("CORS middleware enabled")
     logger.info("Database tables initialized")
+    
+    # Initialize MQTT
+    await initialize_mqtt()
 
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     """Application shutdown event."""
     logger.info("🛑 Presient API shutting down...")
+    
+    # Cleanup MQTT
+    await shutdown_mqtt()
 
 if __name__ == "__main__":
     import uvicorn
