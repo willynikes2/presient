@@ -13,4 +13,5 @@ class SensorOut(SensorBase):
     is_online: bool
 
     class Config:
+        # TODO: Convert to ConfigDict
         orm_mode = True

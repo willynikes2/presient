@@ -48,12 +48,13 @@ class NotificationPreferences(BaseModel):
 
 class ProfilePreferences(BaseModel):
     """User preferences schema"""
-    theme: str = Field("light", regex="^(light|dark|auto)$")
-    language: str = Field("en", regex="^[a-z]{2}(-[A-Z]{2})?$")
+    theme: str = Field("light", pattern="^(light|dark|auto)$")
+    language: str = Field("en", pattern="^[a-z]{2}(-[A-Z]{2})?$")
     timezone: str = Field("UTC", max_length=50)
     notifications: NotificationPreferences = Field(default_factory=NotificationPreferences)
     
     class Config:
+        # TODO: Convert to ConfigDict
         json_schema_extra = {
             "example": {
                 "theme": "dark",
@@ -76,6 +77,7 @@ class ProfilePrivacy(BaseModel):
     activity_visible: bool = True
     
     class Config:
+        # TODO: Convert to ConfigDict
         json_schema_extra = {
             "example": {
                 "profile_visible": True,
@@ -129,7 +131,7 @@ class ProfileStats(BaseModel):
 
 class ProfilePresenceInfo(BaseModel):
     """Current presence information"""
-    online_status: str = Field("offline", regex="^(online|away|busy|offline)$")
+    online_status: str = Field("offline", pattern="^(online|away|busy|offline)$")
     custom_status_message: Optional[str] = None
     last_known_location: Optional[str] = None
     last_location_confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
@@ -152,7 +154,8 @@ class ProfileOut(ProfileBase):
     avatar_url: Optional[str] = None
     
     class Config:
-        from_attributes = True
+        # TODO: Convert to ConfigDict
+        model_config = {"from_attributes": True}
 
 class ProfileWithStats(ProfileOut):
     """Profile with optional statistics"""
@@ -193,8 +196,8 @@ class ProfileSearchResult(BaseModel):
 
 class PreferencesUpdate(BaseModel):
     """Update only preferences"""
-    theme: Optional[str] = Field(None, regex="^(light|dark|auto)$")
-    language: Optional[str] = Field(None, regex="^[a-z]{2}(-[A-Z]{2})?$")
+    theme: Optional[str] = Field(None, pattern="^(light|dark|auto)$")
+    language: Optional[str] = Field(None, pattern="^[a-z]{2}(-[A-Z]{2})?$")
     timezone: Optional[str] = Field(None, max_length=50)
     notifications: Optional[Dict[str, bool]] = None
     
@@ -216,7 +219,7 @@ class PrivacyUpdate(BaseModel):
 
 class PresenceStatusUpdate(BaseModel):
     """Update online status"""
-    status: str = Field(..., regex="^(online|away|busy|offline)$")
+    status: str = Field(..., pattern="^(online|away|busy|offline)$")
     custom_message: Optional[str] = Field(None, max_length=100)
 
 # ==================== Legacy Support ====================
@@ -233,7 +236,8 @@ class ProfileVectorOut(ProfileVectorCreate):
     id: int
     
     class Config:
-        orm_mode = True
+        # TODO: Convert to ConfigDict
+        model_config = {"from_attributes": True}
 
 # ==================== Examples ====================
 """

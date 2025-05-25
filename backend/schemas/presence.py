@@ -19,4 +19,5 @@ class PresenceEventOut(BaseModel):
     timestamp: datetime
 
     class Config:
+        # TODO: Convert to ConfigDict
         from_attributes = True

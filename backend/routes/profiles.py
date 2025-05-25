@@ -41,8 +41,8 @@ class ProfileUpdateEnhanced(ProfileUpdate):
 
 class ProfilePreferences(BaseModel):
     """User preferences model"""
-    theme: str = Field("light", regex="^(light|dark|auto)$")
-    language: str = Field("en", regex="^[a-z]{2}(-[A-Z]{2})?$")
+    theme: str = Field("light", pattern="^(light|dark|auto)$")
+    language: str = Field("en", pattern="^[a-z]{2}(-[A-Z]{2})?$")
     timezone: str = Field("UTC", max_length=50)
     notifications: Dict[str, bool] = Field(default_factory=dict)
     

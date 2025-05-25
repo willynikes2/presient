@@ -5,7 +5,7 @@ Replace your current backend/routes/auth.py with this complete file
 
 from fastapi import APIRouter, HTTPException, Depends, status, Header
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, Field, validator, EmailStr
+from pydantic import BaseModel, Field, field_validator, EmailStr
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 from jose import JWTError, jwt
@@ -38,13 +38,13 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=8, max_length=100)
     full_name: Optional[str] = Field(None, max_length=100)
     
-    @validator('username')
+    @field_validator('username')
     def validate_username(cls, v):
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError('Username can only contain letters, numbers, underscores, and hyphens')
         return v.lower()
     
-    @validator('password')
+    @field_validator('password')
     def validate_password(cls, v):
         if not re.search(r'[A-Z]', v):
             raise ValueError('Password must contain at least one uppercase letter')
@@ -77,7 +77,7 @@ class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str = Field(..., min_length=8, max_length=100)
     
-    @validator('new_password')
+    @field_validator('new_password')
     def validate_password(cls, v):
         if not re.search(r'[A-Z]', v):
             raise ValueError('Password must contain at least one uppercase letter')

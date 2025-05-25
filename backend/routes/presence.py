@@ -32,6 +32,7 @@ class PresenceEventCreate(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     
     class Config:
+        # TODO: Convert to ConfigDict
         json_schema_extra = {
             "example": {
                 "user_id": "user123",
@@ -49,6 +50,7 @@ class PresenceEventResponse(BaseModel):
     timestamp: datetime
     
     class Config:
+        # TODO: Convert to ConfigDict
         from_attributes = True
 
 # ==================== New Models for User Status ====================
@@ -56,7 +58,7 @@ class PresenceEventResponse(BaseModel):
 class UserPresenceStatus(BaseModel):
     """User online/offline status"""
     user_id: str
-    status: str = Field(..., regex="^(online|away|busy|offline)$")
+    status: str = Field(..., pattern="^(online|away|busy|offline)$")
     last_seen: datetime
     last_activity: Optional[datetime] = None
     current_location: Optional[str] = None  # From sensor detection
@@ -64,7 +66,7 @@ class UserPresenceStatus(BaseModel):
 
 class PresenceStatusUpdate(BaseModel):
     """Update user presence status"""
-    status: str = Field(..., regex="^(online|away|busy|offline)$")
+    status: str = Field(..., pattern="^(online|away|busy|offline)$")
     custom_message: Optional[str] = Field(None, max_length=100)
 
 # ==================== Connection Manager for WebSocket ====================
