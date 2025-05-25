@@ -1,0 +1,14 @@
+
+from fastapi import APIRouter, Depends, HTTPException, Header
+import requests
+
+router = APIRouter()
+
+@router.get("/verify")
+def verify_user(authorization: str = Header(...)):
+    # Expecting Bearer token
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    token = authorization.split(" ")[1]
+    # TODO: Call Supabase endpoint to verify token
+    return {"token": token, "status": "stub - not validated yet"}
