@@ -12,3 +12,6 @@ class PresenceEvent(Base):
     sensor_id = Column(String, nullable=False)
     confidence = Column(Float, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+# Define the reverse relationship to Profile
+    profile = relationship("Profile", back_populates="presence_events")
