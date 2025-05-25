@@ -163,53 +163,30 @@ def list_profiles(
     return profiles
 
 # Enhanced get profile with stats and privacy
-@router.get("/{profile_id}", response_model=ProfileWithStats)
-async def get_profile(
-    profile_id: UUID,
-    include_stats: bool = Query(False, description="Include usage statistics"),
+@router.get("/search", response_model=List[ProfileOut])
+def search_profiles(
+    q: str = Query(..., min_length=2, description="Search query"),
+    limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: Dict = Depends(get_current_user)
 ):
-    """Get profile with privacy checks and optional statistics"""
-    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    """Search profiles by name, bio, or location"""
+    # Search in full_name, bio, and location
+    # This is a simple implementation - consider using full-text search in production
+    search_pattern = f"%{q}%"
     
-    if not profile:
-        # Check if this is a user ID instead of profile ID
-        profile = db.query(Profile).filter(Profile.user_id == profile_id).first()
-        
-        if not profile:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={
-                    "error": "PROFILE_NOT_FOUND",
-                    "profile_id": str(profile_id),
-                    "message": "Profile not found",
-                    "suggestion": "Check the profile ID or create a profile first"
-                }
-            )
+    profiles = db.query(Profile).filter(
+        (Profile.full_name.ilike(search_pattern)) |
+        (Profile.bio.ilike(search_pattern)) |
+        (Profile.location.ilike(search_pattern))
+    ).filter(
+        # Only show public profiles
+        Profile.privacy_settings['profile_visible'].astext == 'true'
+    ).limit(limit).all()
     
-    # Check access permissions
-    profile = check_profile_access(profile, current_user)
-    
-    # Convert to response model
-    response = ProfileWithStats.from_orm(profile)
-    
-    # Add stats if requested
-    if include_stats:
-        response.stats = await get_profile_stats(profile.id, db)
-    
-    # Filter sensitive data if not own profile
-    is_own_profile = str(profile.user_id) == current_user["id"]
-    if not is_own_profile:
-        privacy = profile.privacy_settings or {}
-        if not privacy.get("email_visible", False):
-            response.email = None
-        if not privacy.get("location_visible", True):
-            response.location = None
-    
-    return response
+    return profiles
+# ==================== /me routes (must come before /{profile_id}) ====================
 
-# Get current user's profile
 @router.get("/me", response_model=ProfileWithStats)
 async def get_my_profile(
     include_stats: bool = Query(True, description="Include usage statistics"),
@@ -240,58 +217,6 @@ async def get_my_profile(
     return response
 
 # Enhanced update with validation
-@router.put("/{profile_id}", response_model=ProfileOut)
-def update_profile(
-    profile_id: UUID,
-    updates: ProfileUpdateEnhanced,
-    db: Session = Depends(get_db),
-    current_user: Dict = Depends(get_current_user)
-):
-    """Update profile with enhanced validation and ownership check"""
-    profile = db.query(Profile).filter(Profile.id == profile_id).first()
-    
-    if not profile:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "error": "PROFILE_NOT_FOUND",
-                "profile_id": str(profile_id),
-                "message": "Profile not found"
-            }
-        )
-    
-    # Check ownership
-    if str(profile.user_id) != current_user["id"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "NOT_AUTHORIZED",
-                "message": "You can only update your own profile"
-            }
-        )
-    
-    # Update fields
-    update_data = updates.dict(exclude_unset=True)
-    
-    if not update_data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "NO_UPDATES",
-                "message": "No fields to update"
-            }
-        )
-    
-    for key, value in update_data.items():
-        setattr(profile, key, value)
-    
-    profile.updated_at = datetime.now(timezone.utc)
-    
-    db.commit()
-    db.refresh(profile)
-    return profile
-
-# Update own profile (simpler endpoint)
 @router.put("/me", response_model=ProfileOut)
 def update_my_profile(
     updates: ProfileUpdateEnhanced,
@@ -430,6 +355,108 @@ async def upload_avatar(
     }
 
 # Enhanced delete with ownership check
+
+# ==================== /{profile_id} routes ====================
+
+@router.get("/{profile_id}", response_model=ProfileWithStats)
+async def get_profile(
+    profile_id: UUID,
+    include_stats: bool = Query(False, description="Include usage statistics"),
+    db: Session = Depends(get_db),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Get profile with privacy checks and optional statistics"""
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    
+    if not profile:
+        # Check if this is a user ID instead of profile ID
+        profile = db.query(Profile).filter(Profile.user_id == profile_id).first()
+        
+        if not profile:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={
+                    "error": "PROFILE_NOT_FOUND",
+                    "profile_id": str(profile_id),
+                    "message": "Profile not found",
+                    "suggestion": "Check the profile ID or create a profile first"
+                }
+            )
+    
+    # Check access permissions
+    profile = check_profile_access(profile, current_user)
+    
+    # Convert to response model
+    response = ProfileWithStats.from_orm(profile)
+    
+    # Add stats if requested
+    if include_stats:
+        response.stats = await get_profile_stats(profile.id, db)
+    
+    # Filter sensitive data if not own profile
+    is_own_profile = str(profile.user_id) == current_user["id"]
+    if not is_own_profile:
+        privacy = profile.privacy_settings or {}
+        if not privacy.get("email_visible", False):
+            response.email = None
+        if not privacy.get("location_visible", True):
+            response.location = None
+    
+    return response
+
+# Get current user's profile
+@router.put("/{profile_id}", response_model=ProfileOut)
+def update_profile(
+    profile_id: UUID,
+    updates: ProfileUpdateEnhanced,
+    db: Session = Depends(get_db),
+    current_user: Dict = Depends(get_current_user)
+):
+    """Update profile with enhanced validation and ownership check"""
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error": "PROFILE_NOT_FOUND",
+                "profile_id": str(profile_id),
+                "message": "Profile not found"
+            }
+        )
+    
+    # Check ownership
+    if str(profile.user_id) != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "NOT_AUTHORIZED",
+                "message": "You can only update your own profile"
+            }
+        )
+    
+    # Update fields
+    update_data = updates.dict(exclude_unset=True)
+    
+    if not update_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "NO_UPDATES",
+                "message": "No fields to update"
+            }
+        )
+    
+    for key, value in update_data.items():
+        setattr(profile, key, value)
+    
+    profile.updated_at = datetime.now(timezone.utc)
+    
+    db.commit()
+    db.refresh(profile)
+    return profile
+
+# Update own profile (simpler endpoint)
 @router.delete("/{profile_id}", response_model=Dict[str, str])
 def delete_profile(
     profile_id: UUID,
@@ -468,25 +495,3 @@ def delete_profile(
     }
 
 # Search profiles
-@router.get("/search", response_model=List[ProfileOut])
-def search_profiles(
-    q: str = Query(..., min_length=2, description="Search query"),
-    limit: int = Query(10, ge=1, le=100),
-    db: Session = Depends(get_db),
-    current_user: Dict = Depends(get_current_user)
-):
-    """Search profiles by name, bio, or location"""
-    # Search in full_name, bio, and location
-    # This is a simple implementation - consider using full-text search in production
-    search_pattern = f"%{q}%"
-    
-    profiles = db.query(Profile).filter(
-        (Profile.full_name.ilike(search_pattern)) |
-        (Profile.bio.ilike(search_pattern)) |
-        (Profile.location.ilike(search_pattern))
-    ).filter(
-        # Only show public profiles
-        Profile.privacy_settings['profile_visible'].astext == 'true'
-    ).limit(limit).all()
-    
-    return profiles

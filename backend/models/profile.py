@@ -64,7 +64,7 @@ class Profile(Base):
     # user = relationship("User", back_populates="profile", uselist=False)
     
     # Relationship to presence events
-    presence_events = relationship("PresenceEvent", back_populates="profile", lazy="dynamic")
+    presence_events = relationship("PresenceEvent", back_populates="profile", foreign_keys="PresenceEvent.user_id", primaryjoin="Profile.id == PresenceEvent.user_id")
     
     # ==================== Methods ====================
     
