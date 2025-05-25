@@ -1,5 +1,6 @@
 # backend/models/presence_events.py
 from sqlalchemy import Column, String, Float, DateTime
+from sqlalchemy.orm import relationship
 from backend.db.base import Base
 import uuid
 from datetime import datetime
