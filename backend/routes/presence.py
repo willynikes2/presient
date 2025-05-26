@@ -21,7 +21,7 @@ from backend.routes.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/presence", tags=["Presence"])
+router = APIRouter(prefix="/presence", tags=["Presence"])
 
 # ==================== Your Existing Models ====================
 

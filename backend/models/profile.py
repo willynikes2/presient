@@ -65,12 +65,12 @@ class Profile(Base):
     # user = relationship("User", back_populates="profile", uselist=False)
     
     # Relationship to presence events
-    presence_events = relationship("PresenceEvents", back_populates="profile", cascade="all, delete-orphan", foreign_keys="PresenceEvent.user_id", primaryjoin="Profile.id == PresenceEvent.user_id")
+    presence_events = relationship("PresenceEvent", back_populates="profile", cascade="all, delete-orphan", foreign_keys="PresenceEvent.user_id", primaryjoin="Profile.id == PresenceEvent.user_id")
 
 
     # ==================== Methods ====================
     
-    
+
     def to_dict(self, include_private=False):
         """Convert profile to dictionary with privacy controls"""
         data = {
