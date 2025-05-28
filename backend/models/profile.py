@@ -21,7 +21,7 @@ class Profile(Base):
     
     # ==================== User Association ====================
     # Links profile to auth user
-    user_id = Column(UUID(as_uuid=True), unique=True, nullable=True)  # Made nullable for backward compat
+    user_id = Column(String, unique=True)
     
     # ==================== Basic Profile Info ====================
     username = Column(String(50), unique=True, nullable=True)  # For display

@@ -5,6 +5,7 @@ Keeps all existing functionality and adds real-time user presence
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, Query
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, validator
 from datetime import datetime, timezone, timedelta
@@ -141,7 +142,7 @@ async def create_presence_event(
 ):
     """
     Create a new presence detection event.
-    
+
     This endpoint receives presence detection data from sensors and:
     1. Stores the event in the database
     2. Publishes the event to MQTT for real-time integrations
@@ -149,7 +150,7 @@ async def create_presence_event(
     4. Returns the created event details
     """
     logger.info(f"Creating presence event for user {event_data.user_id}")
-    
+
     try:
         # Create presence event
         presence_event = PresenceEvent(
@@ -158,135 +159,49 @@ async def create_presence_event(
             confidence=event_data.confidence,
             timestamp=datetime.now(timezone.utc)
         )
-        
+
         # Save to database
         db.add(presence_event)
         db.commit()
         db.refresh(presence_event)
-        
+
         logger.info(f"Presence event {presence_event.id} created successfully")
-        
+
         # Get profile and sensor location
         profile = None
         sensor_location = None
         try:
-            profile = db.query(Profile).filter(Profile.id == event_data.user_id).first()
+            profile = db.query(Profile).filter(Profile.user_id == event_data.user_id).first()
             # TODO: Get sensor location from sensor registry
             sensor_location = f"Room-{event_data.sensor_id}"  # Placeholder
         except Exception as e:
             logger.warning(f"Could not fetch profile for user {event_data.user_id}: {e}")
-        
+
         # Update user location in connection manager
         if sensor_location:
             manager.update_sensor_location(
-                event_data.user_id, 
-                sensor_location, 
+                event_data.user_id,
+                sensor_location,
                 event_data.confidence
             )
-        
+
         # Publish to MQTT
         try:
             await mqtt_publisher.publish_presence_event(presence_event, profile)
             logger.debug(f"Published presence event {presence_event.id} to MQTT")
         except Exception as e:
             logger.error(f"Failed to publish presence event to MQTT: {e}")
-        
-        return presence_event
-        
+
+        return JSONResponse(
+            status_code=201,
+            content=PresenceEventResponse.model_validate(presence_event).dict()
+        )
+
     except Exception as e:
         logger.error(f"Error creating presence event: {e}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create presence event")
 
-@router.get("/events")
-async def list_presence_events(
-    limit: int = Query(100, ge=1, le=1000),
-    offset: int = Query(0, ge=0),
-    user_id: Optional[str] = None,
-    sensor_id: Optional[str] = None,
-    min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0),
-    start_time: Optional[datetime] = None,
-    end_time: Optional[datetime] = None,
-    db: Session = Depends(get_db),
-    current_user: Dict = Depends(get_current_user)
-):
-    """
-    List presence events with enhanced filtering.
-    
-    Args:
-        limit: Maximum number of events to return
-        offset: Number of events to skip
-        user_id: Filter by specific user ID
-        sensor_id: Filter by specific sensor ID
-        min_confidence: Minimum confidence threshold
-        start_time: Filter events after this time
-        end_time: Filter events before this time
-    """
-    logger.info(f"Listing presence events (limit={limit}, offset={offset})")
-    
-    try:
-        query = db.query(PresenceEvent)
-        
-        # Apply filters
-        if user_id:
-            query = query.filter(PresenceEvent.user_id == user_id)
-        if sensor_id:
-            query = query.filter(PresenceEvent.sensor_id == sensor_id)
-        if min_confidence is not None:
-            query = query.filter(PresenceEvent.confidence >= min_confidence)
-        if start_time:
-            query = query.filter(PresenceEvent.timestamp >= start_time)
-        if end_time:
-            query = query.filter(PresenceEvent.timestamp <= end_time)
-        
-        # Get total count before pagination
-        total_count = query.count()
-        
-        # Order by timestamp and apply pagination
-        events = query.order_by(PresenceEvent.timestamp.desc()).offset(offset).limit(limit).all()
-        
-        return {
-            "events": events,
-            "count": len(events),
-            "total": total_count,
-            "limit": limit,
-            "offset": offset,
-            "has_more": (offset + limit) < total_count
-        }
-        
-    except Exception as e:
-        logger.error(f"Error listing presence events: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve presence events")
-
-@router.get("/events/{event_id}")
-async def get_presence_event(
-    event_id: str,
-    db: Session = Depends(get_db),
-    current_user: Dict = Depends(get_current_user)
-):
-    """Get a specific presence event by ID."""
-    logger.info(f"Retrieving presence event {event_id}")
-    
-    try:
-        event = db.query(PresenceEvent).filter(PresenceEvent.id == event_id).first()
-        
-        if not event:
-            raise HTTPException(
-                status_code=404, 
-                detail={
-                    "error": "EVENT_NOT_FOUND",
-                    "event_id": event_id,
-                    "message": "Presence event not found"
-                }
-            )
-        
-        return event
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving presence event {event_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve presence event")
 
 # ==================== New Routes for User Status ====================
 
