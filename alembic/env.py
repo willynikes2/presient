@@ -1,27 +1,56 @@
 from logging.config import fileConfig
-import os
-import sys
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
+import os
+import sys
+from pathlib import Path
 
-# Include backend path in sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+# Add parent directory to Python path
+sys.path.append(str(Path(__file__).parent.parent))
 
-# Import your Base and models
-from backend.db.base import Base  # This must point to where your Base = declarative_base() is defined
-import backend.models  # This ensures models are imported and registered
+# Try different import strategies
+try:
+    # First try: Import from models package
+    from backend.models import Base, Profile, PresenceEvent
+    print("✓ Imported Base from backend.models")
+except ImportError as e:
+    print(f"Failed to import from backend.models: {e}")
+    try:
+        # Second try: Import from db.base
+        from backend.db.base import Base
+        from backend.models.profile import Profile
+        from backend.models.presence_events import PresenceEvent
+        print("✓ Imported Base from backend.db.base")
+    except ImportError as e:
+        print(f"Failed to import from backend.db.base: {e}")
+        try:
+            # Third try: Import from db.session
+            from backend.db.session import Base
+            from backend.models.profile import Profile
+            from backend.models.presence_events import PresenceEvent
+            print("✓ Imported Base from backend.db.session")
+        except ImportError as e:
+            print(f"Failed to import Base: {e}")
+            raise
 
-# this is the Alembic Config object, which provides access to the values within the .ini file in use.
+# Import User if available
+try:
+    from backend.models.user import User
+except ImportError:
+    pass  # User model might not exist
+
+# this is the Alembic Config object
 config = context.config
 
-# Interpret the config file for Python logging.
-fileConfig(config.config_file_name)
+# Interpret the config file for Python logging
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
-# Provide the metadata object for 'autogenerate'
+# Add your model's MetaData object here
 target_metadata = Base.metadata
 
-def run_migrations_offline():
+def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
@@ -34,18 +63,17 @@ def run_migrations_offline():
     with context.begin_transaction():
         context.run_migrations()
 
-def run_migrations_online():
+def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
+        config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection,
-            target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata
         )
 
         with context.begin_transaction():
