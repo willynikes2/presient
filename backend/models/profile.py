@@ -65,8 +65,7 @@ class Profile(Base):
     # user = relationship("User", back_populates="profile", uselist=False)
     
     # Relationship to presence events
-    presence_events = relationship("PresenceEvent", back_populates="profile", cascade="all, delete-orphan", foreign_keys="PresenceEvent.user_id", primaryjoin="Profile.id == PresenceEvent.user_id")
-
+    
 
     # ==================== Methods ====================
     
@@ -162,6 +161,7 @@ def upgrade():
     
     # Metadata
     op.add_column('profiles', sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True))
+    presence_events = relationship("PresenceEvent", foreign_keys="[PresenceEvent.user_id]", primaryjoin="Profile.user_id == PresenceEvent.user_id", viewonly=True)
     
     # Add unique constraints
     op.create_unique_constraint('uq_profiles_user_id', 'profiles', ['user_id'])
