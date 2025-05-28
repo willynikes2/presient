@@ -65,7 +65,8 @@ class Profile(Base):
     # user = relationship("User", back_populates="profile", uselist=False)
     
     # Relationship to presence events
-    
+    presence_events = relationship("PresenceEvent", back_populates="profile", cascade="all, delete-orphan")
+
 
     # ==================== Methods ====================
     
