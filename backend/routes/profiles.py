@@ -156,7 +156,7 @@ def create_profile(
         user_id=current_user["id"],
         username=username,
         email=current_user["email"],
-        name=current_user.get("full_name", username),
+        name=current_user.get("full_name") or username,
         full_name=current_user.get("full_name"),
         preferences={},
         privacy_settings=ProfilePrivacy().model_dump()
@@ -232,7 +232,7 @@ async def get_my_profile(
             user_id=current_user["id"],
             username=username,
             email=current_user["email"],
-            name=current_user.get("full_name", username),
+            name=current_user.get("full_name") or username,
             full_name=current_user.get("full_name"),
             preferences={},
             privacy_settings=ProfilePrivacy().model_dump()
