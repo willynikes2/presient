@@ -24,9 +24,8 @@ from pydantic import BaseModel, Field, validator, EmailStr, HttpUrl
 
 async def get_user_data(user_id: str, db: Session):
     """Get user data from User table"""
-    from backend.models.user import User
-    user = db.query(User).filter(User.id == user_id).first()
-    return user
+    # Users are stored in memory in auth module, not in database
+    return None
 
 router = APIRouter(prefix="/api/profiles", tags=["Profiles"])
 
@@ -147,22 +146,23 @@ def create_profile(
                 "message": "Profile already exists for this user"
             }
         )
-    
-    new_# Get the actual user data for username
-        user = await get_user_data(current_user["id"], db)
-        username = user.username if user else current_user.get("username", current_user["id"][:8])
-        
-        profile = Profile(
-            user_id=current_user["id"],
-            username=username,
-            email=current_user["email"],
-            name=current_user.get("full_name", username),
-            full_name=current_user.get("full_name"),
-            preferences={},
-            privacy_settings=ProfilePrivacy().model_dump()
-        )
-        db.add(profile)
-        db.commit()
+
+    # Get the actual user data for username
+    # Note: create_profile is not async, so cannot use await here; use get_user_data synchronously or refactor to async if needed
+    user = None  # get_user_data is async, so we skip it here or refactor the function to async if needed
+    username = current_user.get("username", current_user["id"][:8])
+
+    new_profile = Profile(
+        user_id=current_user["id"],
+        username=username,
+        email=current_user["email"],
+        name=current_user.get("full_name", username),
+        full_name=current_user.get("full_name"),
+        preferences={},
+        privacy_settings=ProfilePrivacy().model_dump()
+    )
+    db.add(new_profile)
+    db.commit()
     db.refresh(new_profile)
     return new_profile
 

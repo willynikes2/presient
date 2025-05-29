@@ -296,7 +296,7 @@ async def get_user_presence_status(
     
     if not profile:
         # Try to find the user directly
-        from backend.models.user import User
+        # from backend.models.user import User  # Users are in memory, not in DB
         user = db.query(User).filter(
             (User.username == user_id) | (User.id == user_id)
         ).first()

@@ -1,3 +1,10 @@
+#!/bin/bash
+
+echo "🔧 Fixing password validation in test files..."
+
+# Fix test_integration.py to use valid passwords
+echo -e "\n📝 Updating test_integration.py with proper password format..."
+cat > tests/test_integration.py << 'EOF'
 import json
 import uuid
 from fastapi.testclient import TestClient
@@ -18,7 +25,7 @@ def test_complete_user_flow():
     register_data = {
         "username": unique_username,
         "email": f"{unique_username}@test.com",
-        "password": "TestPass123!  # Changed to include uppercase
+        "password": "TestPass123"  # Changed to include uppercase
     }
     
     register_response = client.post("/api/auth/register", json=register_data)
@@ -27,7 +34,7 @@ def test_complete_user_flow():
     # 2. Login
     login_data = {
         "username": unique_username,
-        "password": "TestPass123!  # Changed to match registration
+        "password": "TestPass123"  # Changed to match registration
     }
     
     login_response = client.post("/api/auth/login", json=login_data)
@@ -84,7 +91,7 @@ def test_presence_event_creation():
     register_data = {
         "username": unique_username,
         "email": f"{unique_username}@test.com",
-        "password": "TestPass123!  # Changed to include uppercase
+        "password": "TestPass123"  # Changed to include uppercase
     }
     
     register_response = client.post("/api/auth/register", json=register_data)
@@ -92,7 +99,7 @@ def test_presence_event_creation():
     
     login_data = {
         "username": unique_username,
-        "password": "TestPass123!  # Changed to match registration
+        "password": "TestPass123"  # Changed to match registration
     }
     
     login_response = client.post("/api/auth/login", json=login_data)
@@ -122,3 +129,32 @@ def test_presence_event_creation():
     assert response_data["user_id"] == unique_username
     assert response_data["sensor_id"] == "test-sensor-02"
     assert response_data["confidence"] == 0.85
+EOF
+
+echo "✅ Fixed test_integration.py passwords"
+
+# Also check and fix any other test files that might have password issues
+echo -e "\n🔍 Checking other test files for password validation issues..."
+
+# Check test_routes.py
+if grep -q "testpass123" tests/test_routes.py; then
+    echo "📝 Fixing passwords in test_routes.py..."
+    sed -i 's/testpass123/TestPass123/g' tests/test_routes.py
+    echo "✅ Fixed test_routes.py passwords"
+fi
+
+# Check any other test files
+find tests/ -name "*.py" -exec grep -l "testpass123" {} \; | while read file; do
+    echo "📝 Fixing passwords in $file..."
+    sed -i 's/testpass123/TestPass123/g' "$file"
+    echo "✅ Fixed passwords in $file"
+done
+
+echo -e "\n🎯 Password validation fixes complete!"
+echo "The password 'TestPass123' meets all requirements:"
+echo "  ✅ At least 8 characters"
+echo "  ✅ Contains uppercase letter (T, P)"
+echo "  ✅ Contains lowercase letters"
+echo "  ✅ Contains numbers"
+echo ""
+echo "Now run: pytest tests/ -v"
