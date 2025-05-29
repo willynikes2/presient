@@ -15,7 +15,7 @@ class Profile(Base):
     
     # ==================== Existing Fields ====================
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String, nullable=False)  # Keep for backward compatibility
+    name = Column(String, nullable=True)  # Keep for backward compatibility
     heartbeat_signature = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
@@ -24,9 +24,9 @@ class Profile(Base):
     user_id = Column(String, unique=True)
     
     # ==================== Basic Profile Info ====================
-    username = Column(String(50), unique=True, nullable=True)  # For display
+    username = Column(String, unique=True, nullable=True)  # For display
     email = Column(String(255), unique=True, nullable=True)
-    full_name = Column(String(100), nullable=True)  # More formal than 'name'
+    full_name = Column(String, nullable=True)  # More formal than 'name'
     bio = Column(Text, nullable=True)
     location = Column(String(100), nullable=True)
     website = Column(String(255), nullable=True)

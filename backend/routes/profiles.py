@@ -134,7 +134,7 @@ def create_profile(
             }
         )
     
-    new_profile = Profile(**profile.dict(), user_id=current_user["id"])
+    new_profile = Profile(**profile.model_dump(), user_id=current_user["id"])
     db.add(new_profile)
     db.commit()
     db.refresh(new_profile)
@@ -201,9 +201,10 @@ async def get_my_profile(
         profile = Profile(
             user_id=current_user["id"],
             email=current_user["email"],
+            name=current_user.get("full_name", current_user.get("username", "User")),  # Use full_name or username for name
             full_name=current_user.get("full_name"),
             preferences={},
-            privacy_settings=ProfilePrivacy().dict()
+            privacy_settings=ProfilePrivacy().model_dump()
         )
         db.add(profile)
         db.commit()
@@ -254,7 +255,7 @@ def update_preferences(
         )
     
     # Update preferences (assuming it's a JSON column)
-    profile.preferences = preferences.dict()
+    profile.preferences = preferences.model_dump()
     profile.updated_at = datetime.now(timezone.utc)
     
     db.commit()
@@ -283,7 +284,7 @@ def update_privacy_settings(
         )
     
     # Update privacy settings (assuming it's a JSON column)
-    profile.privacy_settings = privacy.dict()
+    profile.privacy_settings = privacy.model_dump()
     profile.updated_at = datetime.now(timezone.utc)
     
     db.commit()

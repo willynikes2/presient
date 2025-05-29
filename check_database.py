@@ -1,46 +1,30 @@
-#!/usr/bin/env python3
 import sqlite3
 import os
 
-def check_database():
-    db_path = "backend/presient.db"
-    
-    if not os.path.exists(db_path):
-        print(f"❌ Database not found at {db_path}")
-        print("💡 The database might be in a different location or not created yet")
-        return
-    
-    try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Check if users table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
-        if not cursor.fetchone():
-            print("❌ Users table doesn't exist in database")
-            return
-        
-        # Count users
-        cursor.execute("SELECT COUNT(*) FROM users")
-        user_count = cursor.fetchone()[0]
-        
-        print(f"📊 Found {user_count} users in database")
-        
-        if user_count == 0:
-            print("💡 Database is empty - you need to register a new user")
-        else:
-            # Show existing users
-            cursor.execute("SELECT id, username, email, is_active FROM users LIMIT 10")
-            users = cursor.fetchall()
-            print("👥 Existing users:")
-            for user in users:
-                status = "active" if user[3] else "inactive"
-                print(f"  ID: {user[0]}, Username: {user[1]}, Email: {user[2]} ({status})")
-        
-        conn.close()
-        
-    except Exception as e:
-        print(f"❌ Error checking database: {e}")
+db_path = 'backend/db/dev.db'
+if not os.path.exists(db_path):
+    db_path = 'presient.db'
 
-if __name__ == "__main__":
-    check_database()
+print(f"🔍 Checking database at: {db_path}\n")
+
+conn = sqlite3.connect(db_path)
+cursor = conn.cursor()
+
+# Check tables
+cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+tables = cursor.fetchall()
+print("Tables:", [t[0] for t in tables])
+
+# Check profiles table schema
+print("\n📊 Profiles table schema:")
+cursor.execute("PRAGMA table_info(profiles)")
+for col in cursor.fetchall():
+    print(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULL OK'} - Default: {col[4]}")
+
+# Check presence_events table schema
+print("\n📊 Presence_events table schema:")
+cursor.execute("PRAGMA table_info(presence_events)")
+for col in cursor.fetchall():
+    print(f"  {col[1]} ({col[2]}) - {'NOT NULL' if col[3] else 'NULL OK'} - Default: {col[4]}")
+
+conn.close()

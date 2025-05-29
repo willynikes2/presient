@@ -1,19 +1,17 @@
-# backend/models/presence_events.py
-
-from sqlalchemy import Column, String, Float, DateTime, ForeignKey
-from sqlalchemy.orm import relationship
-from backend.db.base import Base
 import uuid
+from sqlalchemy import Column, String, DateTime, Float, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
+from backend.db import Base
 
 class PresenceEvent(Base):
     __tablename__ = "presence_events"
-    
+
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, nullable=False)
-    sensor_id = Column(String, nullable=False)
-    confidence = Column(Float, nullable=False)
+    user_id = Column(String, ForeignKey("profiles.id"), index=True)  # ✅ Restored FK
+    sensor_id = Column(String, index=True)
+    confidence = Column(Float)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
-    # Fix: establish relationship with Profile via user_id
+    # Relationship to Profile
     profile = relationship("Profile", back_populates="presence_events")
