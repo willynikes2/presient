@@ -70,6 +70,7 @@ class TestFullWorkflow:
         response = client.post("/api/presence/event", json=event_data, headers=headers)
         assert response.status_code == 201
         event = response.json()
+        print("EVENT RESPONSE:", event)
         assert event["confidence"] == 0.95
         
         # 6. List presence events
