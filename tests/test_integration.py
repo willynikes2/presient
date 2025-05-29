@@ -18,7 +18,7 @@ def test_complete_user_flow():
     register_data = {
         "username": unique_username,
         "email": f"{unique_username}@test.com",
-        "password": "TestPass123!  # Changed to include uppercase
+        "password": "TestPass123!"  # Changed to include uppercase
     }
     
     register_response = client.post("/api/auth/register", json=register_data)
@@ -27,7 +27,7 @@ def test_complete_user_flow():
     # 2. Login
     login_data = {
         "username": unique_username,
-        "password": "TestPass123!  # Changed to match registration
+        "password": "TestPass123!"  # Changed to match registration
     }
     
     login_response = client.post("/api/auth/login", json=login_data)
@@ -84,7 +84,7 @@ def test_presence_event_creation():
     register_data = {
         "username": unique_username,
         "email": f"{unique_username}@test.com",
-        "password": "TestPass123!  # Changed to include uppercase
+        "password": "TestPass123!"  # Changed to include uppercase
     }
     
     register_response = client.post("/api/auth/register", json=register_data)
@@ -92,7 +92,7 @@ def test_presence_event_creation():
     
     login_data = {
         "username": unique_username,
-        "password": "TestPass123!  # Changed to match registration
+        "password": "TestPass123!"  # Changed to match registration
     }
     
     login_response = client.post("/api/auth/login", json=login_data)
