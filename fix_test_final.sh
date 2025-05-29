@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# Fix the test_integration.py file directly
+cat > tests/test_integration.py << 'EOF'
 import json
 import uuid
 from fastapi.testclient import TestClient
@@ -94,9 +98,8 @@ class TestFullWorkflow:
         assert events_data["count"] >= 1
         
         # 7. Get user presence status
-        # 7. Get user presence status
         response = client.get(f"/api/presence/status/{username}", headers=headers)
-                assert response.status_code == 200
+        assert response.status_code == 200
     
     def test_validation_errors(self):
         """Test validation error handling"""
@@ -124,3 +127,8 @@ class TestFullWorkflow:
             headers=headers
         )
         assert response.status_code in [401, 422]  # Either auth fails or validation fails
+EOF
+
+echo "✅ Fixed test_integration.py"
+echo ""
+echo "Now run: pytest tests/test_integration.py -v"

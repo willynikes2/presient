@@ -21,6 +21,13 @@ from backend.routes.auth import get_current_user
 # Additional Pydantic models for new features
 from pydantic import BaseModel, Field, validator, EmailStr, HttpUrl
 
+
+async def get_user_data(user_id: str, db: Session):
+    """Get user data from User table"""
+    from backend.models.user import User
+    user = db.query(User).filter(User.id == user_id).first()
+    return user
+
 router = APIRouter(prefix="/api/profiles", tags=["Profiles"])
 
 # ==================== Additional Pydantic Models ====================
@@ -141,9 +148,21 @@ def create_profile(
             }
         )
     
-    new_profile = Profile(**profile.model_dump(), user_id=current_user["id"])
-    db.add(new_profile)
-    db.commit()
+    new_# Get the actual user data for username
+        user = await get_user_data(current_user["id"], db)
+        username = user.username if user else current_user.get("username", current_user["id"][:8])
+        
+        profile = Profile(
+            user_id=current_user["id"],
+            username=username,
+            email=current_user["email"],
+            name=current_user.get("full_name", username),
+            full_name=current_user.get("full_name"),
+            preferences={},
+            privacy_settings=ProfilePrivacy().model_dump()
+        )
+        db.add(profile)
+        db.commit()
     db.refresh(new_profile)
     return new_profile
 
@@ -205,10 +224,15 @@ async def get_my_profile(
     
     if not profile:
         # Auto-create profile if it doesn't exist
+        # Get the actual user data for username
+        user = await get_user_data(current_user["id"], db)
+        username = user.username if user else current_user.get("username", current_user["id"][:8])
+        
         profile = Profile(
             user_id=current_user["id"],
+            username=username,
             email=current_user["email"],
-            name=current_user.get("full_name", current_user.get("username", "User")),  # Use full_name or username for name
+            name=current_user.get("full_name", username),
             full_name=current_user.get("full_name"),
             preferences={},
             privacy_settings=ProfilePrivacy().model_dump()

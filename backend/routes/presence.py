@@ -19,6 +19,7 @@ from backend.models.presence_events import PresenceEvent
 from backend.models.profile import Profile
 from backend.services.mqtt import mqtt_publisher
 from backend.routes.auth import get_current_user
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -274,20 +275,54 @@ async def get_user_presence_status(
 ) -> UserPresenceStatus:
     """Get current presence status for a user (online/offline + sensor location)"""
     
-    # Check if user exists
-    profile = db.query(Profile).filter(Profile.id == user_id).first()
+    # Try to find profile by different methods
+    profile = None
+    
+    # Method 1: Try by username
+    profile = db.query(Profile).filter(Profile.username == user_id).first()
+    
     if not profile:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "USER_NOT_FOUND",
-                "user_id": user_id,
-                "message": "User not found"
-            }
-        )
+        # Method 2: Try by user_id (foreign key to User)
+        profile = db.query(Profile).filter(Profile.user_id == user_id).first()
+    
+    if not profile:
+        # Method 3: Check if it's a valid UUID and try by profile id
+        try:
+            import uuid
+            uuid_obj = uuid.UUID(user_id)
+            profile = db.query(Profile).filter(Profile.id == str(uuid_obj)).first()
+        except ValueError:
+            pass
+    
+    if not profile:
+        # Try to find the user directly
+        from backend.models.user import User
+        user = db.query(User).filter(
+            (User.username == user_id) | (User.id == user_id)
+        ).first()
+        
+        if user:
+            # Create a minimal profile response
+            return UserPresenceStatus(
+                user_id=user.id,
+                status=manager.user_status.get(user.id, {}).get("status", "offline"),
+                last_seen=manager.user_status.get(user.id, {}).get("last_seen", datetime.now(timezone.utc)),
+                last_activity=manager.last_activity.get(user.id),
+                current_location=None,
+                confidence=None
+            )
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "error": "USER_NOT_FOUND",
+                    "user_id": user_id,
+                    "message": "User not found"
+                }
+            )
     
     # Get online/offline status
-    status_info = manager.user_status.get(user_id, {
+    status_info = manager.user_status.get(profile.user_id, {
         "status": "offline",
         "last_seen": None
     })
@@ -297,21 +332,21 @@ async def get_user_presence_status(
     location_confidence = None
     if include_location:
         latest_event = db.query(PresenceEvent)\
-            .filter(PresenceEvent.user_id == user_id)\
+            .filter(PresenceEvent.user_id == profile.user_id)\
             .order_by(PresenceEvent.timestamp.desc())\
             .first()
         
         if latest_event:
             # Check if event is recent (within last 5 minutes)
             if (datetime.now(timezone.utc) - latest_event.timestamp).seconds < 300:
-                location = manager.sensor_locations.get(user_id)
+                location = manager.sensor_locations.get(profile.user_id)
                 location_confidence = latest_event.confidence
     
     return UserPresenceStatus(
-        user_id=user_id,
+        user_id=profile.user_id,
         status=status_info["status"],
         last_seen=status_info.get("last_seen") or datetime.now(timezone.utc),
-        last_activity=manager.last_activity.get(user_id),
+        last_activity=manager.last_activity.get(profile.user_id),
         current_location=location,
         confidence=location_confidence
     )
