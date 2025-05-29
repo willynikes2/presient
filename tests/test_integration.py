@@ -1,3 +1,4 @@
+import json
 """Integration tests for PresientDB"""
 import pytest
 from fastapi.testclient import TestClient
@@ -67,25 +68,27 @@ class TestFullWorkflow:
             "sensor_id": "test-sensor-01",
             "confidence": 0.95
         }
-        response = client.post("/api/presence/event", json=event_data, headers=headers)
-        assert response.status_code == 201
-        event = response.json()
-        print("EVENT RESPONSE:", event)
-        assert event["confidence"] == 0.95
-        
-        # 6. List presence events
-        response = client.get("/api/presence/events?limit=5", headers=headers)
-        assert response.status_code == 200
-        events_data = response.json()
-        assert "events" in events_data
-        assert events_data["count"] > 0
-        
-        # 7. Get presence status
-        response = client.get(f"/api/presence/status/{username}", headers=headers)
-        assert response.status_code == 200
-        status = response.json()
-        assert status["user_id"] == username
-        assert status["status"] in ["online", "offline"]
+    response = client.post("/api/presence/event", json=event_data, headers=headers)
+    assert response.status_code == 201
+    event = response.json()
+    print("EVENT RESPONSE:", event)
+        if isinstance(event, str):
+            event = json.loads(event)
+    assert event["confidence"] == 0.95
+
+    # 6. List presence events
+    response = client.get("/api/presence/events?limit=5", headers=headers)
+    assert response.status_code == 200
+    events_data = response.json()
+    assert "events" in events_data
+    assert events_data["count"] > 0
+
+    # 7. Get presence status
+    response = client.get(f"/api/presence/status/{username}", headers=headers)
+    assert response.status_code == 200
+    status = response.json()
+    assert status["user_id"] == username
+    assert status["status"] in ["online", "offline"]
 
     def test_validation_errors(self):
         """Test that validation works properly"""
