@@ -22,7 +22,7 @@ from backend.routes.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/presence", tags=["Presence"])
+router = APIRouter(prefix="/api/presence", tags=["Presence"])
 
 # ==================== Your Existing Models ====================
 
@@ -52,10 +52,6 @@ class PresenceEventResponse(BaseModel):
     sensor_id: str
     confidence: float
     timestamp: datetime
-    
-    class Config:
-        # TODO: Convert to ConfigDict
-        from_attributes = True
 
 # ==================== New Models for User Status ====================
 
@@ -197,7 +193,7 @@ async def create_presence_event(
 
         return JSONResponse(
             status_code=201,
-            content=PresenceEventResponse.model_validate(presence_event).model_dump()
+            content=PresenceEventResponse.model_validate(presence_event).model_dump_json()
         )
 
     except Exception as e:
@@ -207,6 +203,67 @@ async def create_presence_event(
 
 
 # ==================== New Routes for User Status ====================
+
+
+@router.get("/events")
+async def list_presence_events(
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
+    user_id: Optional[str] = None,
+    sensor_id: Optional[str] = None,
+    min_confidence: Optional[float] = Query(None, ge=0.0, le=1.0),
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    db: Session = Depends(get_db),
+    current_user: Dict = Depends(get_current_user)
+):
+    """
+    List presence events with enhanced filtering.
+    
+    Args:
+        limit: Maximum number of events to return
+        offset: Number of events to skip
+        user_id: Filter by specific user ID
+        sensor_id: Filter by specific sensor ID
+        min_confidence: Minimum confidence threshold
+        start_time: Filter events after this time
+        end_time: Filter events before this time
+    """
+    logger.info(f"Listing presence events (limit={limit}, offset={offset})")
+    
+    try:
+        query = db.query(PresenceEvent)
+        
+        # Apply filters
+        if user_id:
+            query = query.filter(PresenceEvent.user_id == user_id)
+        if sensor_id:
+            query = query.filter(PresenceEvent.sensor_id == sensor_id)
+        if min_confidence is not None:
+            query = query.filter(PresenceEvent.confidence >= min_confidence)
+        if start_time:
+            query = query.filter(PresenceEvent.timestamp >= start_time)
+        if end_time:
+            query = query.filter(PresenceEvent.timestamp <= end_time)
+        
+        # Get total count before pagination
+        total_count = query.count()
+        
+        # Order by timestamp and apply pagination
+        events = query.order_by(PresenceEvent.timestamp.desc()).offset(offset).limit(limit).all()
+        
+        return {
+            "events": events,
+            "count": len(events),
+            "total": total_count,
+            "limit": limit,
+            "offset": offset,
+            "has_more": (offset + limit) < total_count
+        }
+        
+    except Exception as e:
+        logger.error(f"Error listing presence events: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve presence events")
 
 @router.get("/status/{user_id}")
 async def get_user_presence_status(

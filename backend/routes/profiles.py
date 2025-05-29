@@ -444,7 +444,7 @@ def update_profile(
         )
     
     # Update fields
-    update_data = updates.dict(exclude_unset=True)
+    update_data = updates.model_dump(exclude_unset=True)
     
     if not update_data:
         raise HTTPException(
