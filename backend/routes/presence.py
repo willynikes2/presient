@@ -44,6 +44,9 @@ class PresenceEventCreate(BaseModel):
 
 class PresenceEventResponse(BaseModel):
     """Schema for presence event responses."""
+    model_config = {"from_attributes": True}
+    
+    """Schema for presence event responses."""
     id: str
     user_id: str
     sensor_id: str
@@ -135,7 +138,7 @@ manager = ConnectionManager()
 
 # ==================== Your Existing Routes (Enhanced) ====================
 
-@router.post("/event", response_model=PresenceEventResponse)
+@router.post("/event", response_model=PresenceEventResponse, status_code=201)
 async def create_presence_event(
     event_data: PresenceEventCreate,
     db: Session = Depends(get_db)
@@ -194,7 +197,7 @@ async def create_presence_event(
 
         return JSONResponse(
             status_code=201,
-            content=PresenceEventResponse.model_validate(presence_event).dict()
+            content=PresenceEventResponse.model_validate(presence_event).model_dump()
         )
 
     except Exception as e:

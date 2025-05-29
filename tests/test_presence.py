@@ -86,7 +86,7 @@ def test_health_check():
     assert "mqtt" in data["checks"]
 
 def test_presence_events_empty_list():
-    response = client.get("/presence/events")
+    response = client.get("/api/presence/events")
     assert response.status_code == 401 or response.status_code == 403  # Because we need auth
 
 # Cleanup

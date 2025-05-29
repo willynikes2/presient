@@ -74,7 +74,7 @@ def test_presence_event():
         "sensor_id": "test-sensor-01",
         "confidence": 0.95
     }
-    response = client.post("/presence/event", json=event_data, headers=headers)
+    response = client.post("/api/presence/event", json=event_data, headers=headers)
     assert response.status_code == 201
 
 if __name__ == "__main__":

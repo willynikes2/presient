@@ -26,6 +26,7 @@ router = APIRouter(prefix="/api/profiles", tags=["Profiles"])
 # ==================== Additional Pydantic Models ====================
 
 class ProfileUpdateEnhanced(ProfileUpdate):
+    model_config = {"from_attributes": True}
     """Enhanced profile update with validation"""
     full_name: Optional[str] = Field(None, min_length=1, max_length=100)
     bio: Optional[str] = Field(None, max_length=500)
@@ -40,6 +41,7 @@ class ProfileUpdateEnhanced(ProfileUpdate):
         return v
 
 class ProfilePreferences(BaseModel):
+    model_config = {"from_attributes": True}
     """User preferences model"""
     theme: str = Field("light", pattern="^(light|dark|auto)$")
     language: str = Field("en", pattern="^[a-z]{2}(-[A-Z]{2})?$")
@@ -55,6 +57,7 @@ class ProfilePreferences(BaseModel):
         return v
 
 class ProfilePrivacy(BaseModel):
+    model_config = {"from_attributes": True}
     """Profile privacy settings"""
     profile_visible: bool = True
     email_visible: bool = False
@@ -62,6 +65,7 @@ class ProfilePrivacy(BaseModel):
     activity_visible: bool = True
 
 class ProfileStats(BaseModel):
+    model_config = {"from_attributes": True}
     """Profile statistics"""
     sensors_count: int = 0
     data_points: int = 0
@@ -69,6 +73,9 @@ class ProfileStats(BaseModel):
     last_activity: Optional[datetime] = None
 
 class ProfileWithStats(ProfileOut):
+    """Profile response with optional statistics"""
+    model_config = {"from_attributes": True}
+    
     """Profile response with optional statistics"""
     stats: Optional[ProfileStats] = None
     preferences: Optional[Dict[str, Any]] = None
@@ -210,7 +217,7 @@ async def get_my_profile(
         db.commit()
         db.refresh(profile)
     
-    response = ProfileWithStats.from_orm(profile)
+    response = ProfileWithStats.model_validate(profile)
     
     if include_stats:
         response.stats = await get_profile_stats(profile.id, db)
@@ -388,7 +395,7 @@ async def get_profile(
     profile = check_profile_access(profile, current_user)
     
     # Convert to response model
-    response = ProfileWithStats.from_orm(profile)
+    response = ProfileWithStats.model_validate(profile)
     
     # Add stats if requested
     if include_stats:
