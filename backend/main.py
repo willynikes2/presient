@@ -182,12 +182,13 @@ app.add_exception_handler(Exception, general_exception_handler)
 
 # ==================== Import and Include Routers ====================
 # Import ALL routers including the new auth router
-from backend.routes import auth, presence, profiles
+from backend.routes import auth, presence, profiles, heartbeat_auth
 
 # Include routers with consistent prefixing
 app.include_router(auth.router)  # Already has /api/auth prefix
 app.include_router(profiles.router)  # Update prefix in router or here
 app.include_router(presence.router)  # Update prefix in router or here
+app.include_router(heartbeat_auth.router)  # Add this line
 
 # ==================== Root and Health Endpoints ====================
 @app.get("/", tags=["Health"])
