@@ -3,13 +3,17 @@
 
 import json
 import hashlib
+from fastapi import HTTPException
 import numpy as np
 from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import logging
+from fastapi import APIRouter
 
 logger = logging.getLogger(__name__)
+
+router = APIRouter()
 
 @dataclass
 class HeartbeatSample:
@@ -267,3 +271,119 @@ if __name__ == "__main__":
     # Authenticate
     auth_result = auth.authenticate(auth_samples)
     print(f"Authentication result: {auth_result}")
+
+    # Add these webhook endpoints to your heartbeat_auth.py file
+
+@router.post("/webhook/light-control")
+async def webhook_light_control(request: Dict[str, Any]):
+    """Webhook for VM to control lights via Codespace"""
+    
+    color = request.get("color", "blue")
+    user_id = request.get("user_id")
+    duration = request.get("duration", 3)
+    
+    # Process the light command
+    logger.info(f"🔗 Webhook: VM requesting {color} light for {user_id}")
+    
+    # Color command mapping (same as before)
+    color_commands = {
+        "off": {"state": "OFF"},
+        "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
+        "green": {"state": "ON", "color": {"r": 0, "g": 255, "b": 0}},
+        "yellow": {"state": "ON", "color": {"r": 255, "g": 255, "b": 0}},
+        "purple": {"state": "ON", "color": {"r": 128, "g": 0, "b": 255}},
+        "red": {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
+    }
+    
+    command = color_commands.get(color, color_commands["blue"])
+    
+    # Enhanced command with metadata
+    enhanced_command = {
+        **command,
+        "user_id": user_id,
+        "duration": duration,
+        "timestamp": datetime.utcnow().isoformat(),
+        "source": "presient_webhook"
+    }
+    
+    mqtt_topic = "presient/princeton/light/status_light/command"
+    
+    return {
+        "success": True,
+        "color": color,
+        "user_id": user_id,
+        "duration": duration,
+        "mqtt_topic": mqtt_topic,
+        "mqtt_command": enhanced_command,
+        "instructions": "Publish mqtt_command to mqtt_topic via your local MQTT broker",
+        "webhook_processed": True,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+@router.post("/webhook/smart-presence")
+async def webhook_smart_presence(sensor_data: Dict[str, Any]):
+    """Webhook for smart presence detection with automatic light control"""
+    
+    try:
+        logger.info(f"🔗 Webhook: VM sending sensor data for smart presence")
+        
+        # Extract sensor data
+        heart_rate = float(sensor_data.get("heart_rate", 0))
+        target_count = int(sensor_data.get("target_count", 0))
+        confidence = float(sensor_data.get("confidence", 0.8))
+        
+        # Process authentication using existing logic
+        presence_result = await smart_presence_detection(sensor_data)
+        
+        # Determine light color based on result
+        if presence_result.authenticated_presence:
+            light_color = "green"
+            light_duration = 5
+        elif presence_result.presence_detected:
+            light_color = "yellow" 
+            light_duration = 3
+        else:
+            light_color = "off"
+            light_duration = 1
+        
+        # Get light command for VM to publish
+        webhook_result = await webhook_light_control({
+            "color": light_color,
+            "user_id": presence_result.user_id,
+            "duration": light_duration
+        })
+        
+        return {
+            **presence_result.dict(),
+            "light_control": webhook_result,
+            "webhook_processed": True,
+            "flow": ["sensor_data", "authentication", "light_command", "mqtt_publish"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Webhook smart presence failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Webhook smart presence failed: {str(e)}")
+
+@router.post("/webhook/test-sequence")
+async def webhook_test_sequence():
+    """Webhook for testing all light colors via VM MQTT"""
+    
+    colors = ["blue", "green", "yellow", "purple", "red", "off"]
+    commands = []
+    
+    for color in colors:
+        result = await webhook_light_control({
+            "color": color,
+            "user_id": "webhook_test",
+            "duration": 2
+        })
+        commands.append(result)
+    
+    return {
+        "success": True,
+        "sequence_type": "webhook_controlled",
+        "colors_tested": colors,
+        "mqtt_commands": commands,
+        "instructions": "Publish each mqtt_command to its mqtt_topic with 2-second delays",
+        "total_commands": len(commands)
+    }

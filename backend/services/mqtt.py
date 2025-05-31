@@ -254,3 +254,60 @@ async def shutdown_mqtt():
     if mqtt_publisher.connected:
         await mqtt_publisher.disconnect()
         logger.info("MQTT publisher shutdown complete")
+# Add these methods to your existing MQTTPublisher class in mqtt.py
+
+async def publish_light_command(self, color: str, user_id: Optional[str] = None, duration: int = 3) -> bool:
+    """Publish light control command to ESP32"""
+    if not self.connected:
+        logger.debug("MQTT not connected, skipping light command")
+        return False
+    
+    try:
+        # Color command mapping
+        color_commands = {
+            "off": {"state": "OFF"},
+            "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
+            "green": {"state": "ON", "color": {"r": 0, "g": 255, "b": 0}},
+            "yellow": {"state": "ON", "color": {"r": 255, "g": 255, "b": 0}},
+            "purple": {"state": "ON", "color": {"r": 128, "g": 0, "b": 255}},
+            "red": {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
+        }
+        
+        command = color_commands.get(color, color_commands["blue"])
+        
+        # Enhanced command with metadata
+        enhanced_command = {
+            **command,
+            "user_id": user_id,
+            "duration": duration,
+            "timestamp": datetime.utcnow().isoformat(),
+            "source": "presient_auth"
+        }
+        
+        # Publish to ESP32 light topic
+        topic = f"{self.base_topic}/princeton/light/status_light/command"
+        
+        await self.publish(
+            topic,
+            json.dumps(enhanced_command),
+            retain=False
+        )
+        
+        logger.info(f"Published {color} light command for user {user_id} to {topic}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error publishing light command: {e}")
+        return False
+
+def get_mqtt_status(self) -> Dict[str, Any]:
+    """Get comprehensive MQTT status"""
+    return {
+        "enabled": self.enabled,
+        "connected": self.connected,
+        "broker_host": self.broker_host,
+        "broker_port": self.broker_port,
+        "client_id": self.client_id,
+        "base_topic": self.base_topic,
+        "has_auth": bool(self.username)
+    }

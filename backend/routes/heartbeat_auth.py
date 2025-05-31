@@ -1,11 +1,16 @@
 # backend/routes/heartbeat_auth.py
 # Heartbeat Authentication API Routes for Presient MVP
 
+import asyncio
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
+import json
+
+# MQTT import commented out for now
+# from ..services.mqtt import MQTTPublisher
 
 from ..services.heartbeat_auth import HeartbeatAuthenticator, HeartbeatSample
 
@@ -288,3 +293,100 @@ async def test_authenticate():
     except Exception as e:
         logger.error(f"Test authentication failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Test authentication failed: {str(e)}")
+
+
+@router.post("/light/control")
+async def control_status_light(
+    color: str = "blue",
+    user_id: Optional[str] = None,
+    duration: int = 3
+):
+    """Control status lights via MQTT"""
+    
+    # Import the global MQTT publisher
+    from ..services.mqtt import mqtt_publisher
+    
+    # Log the command
+    logger.info(f"Light control: Setting {color} light for user {user_id}")
+    
+    # Publish via MQTT
+    success = await mqtt_publisher.publish_light_command(color, user_id, duration)
+    
+    if success:
+        logger.info(f"Successfully published {color} light command via MQTT")
+    else:
+        logger.warning(f"Failed to publish {color} light command via MQTT")
+    
+    # Get command details for response
+    color_commands = {
+        "off": {"state": "OFF"},
+        "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
+        "green": {"state": "ON", "color": {"r": 0, "g": 255, "b": 0}},
+        "yellow": {"state": "ON", "color": {"r": 255, "g": 255, "b": 0}},
+        "purple": {"state": "ON", "color": {"r": 128, "g": 0, "b": 255}},
+        "red": {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
+    }
+    
+    command = color_commands.get(color, color_commands["blue"])
+    mqtt_topic = f"presient/princeton/light/status_light/command"
+    
+    return {
+        "success": success,
+        "color": color,
+        "user_id": user_id,
+        "duration": duration,
+        "mqtt_topic": mqtt_topic,
+        "command": command,
+        "mqtt_published": success,
+        "mqtt_status": mqtt_publisher.get_mqtt_status(),
+        "message": f"Light command {'sent' if success else 'failed'}: {color}"
+    }
+
+@router.post("/test/light-sequence")
+async def test_light_sequence():
+    """Test all light colors in sequence"""
+    
+    colors = ["blue", "green", "yellow", "purple", "red", "off"]
+    results = []
+    
+    for color in colors:
+        result = await control_status_light(color, "test", 2)
+        results.append(result)
+        await asyncio.sleep(1)  # 1 second delay between colors
+    
+    return {
+        "success": True,
+        "sequence_completed": True,
+        "colors_tested": colors,
+        "results": results,
+        "message": "Light sequence test completed"
+    }
+
+
+@router.post("/presence/smart-with-light")
+async def smart_presence_with_light(sensor_data: Dict[str, Any]):
+    """Smart presence detection with light feedback"""
+    
+    try:
+        # Set scanning light first
+        await control_status_light("blue", duration=2)
+        
+        # Process smart presence detection
+        result = await smart_presence_detection(sensor_data)
+        
+        # Set result light
+        if result.authenticated_presence:
+            await control_status_light("green", result.user_id, 5)
+        elif result.presence_detected:
+            await control_status_light("yellow", "unknown", 3)
+        else:
+            await control_status_light("off")
+        
+        return {
+            **result.dict(),
+            "light_feedback": True
+        }
+        
+    except Exception as e:
+        logger.error(f"Smart presence with light failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Smart presence with light failed: {str(e)}")
