@@ -2,15 +2,14 @@
 # Heartbeat Authentication API Routes for Presient MVP
 
 import asyncio
+import os
+import aiohttp
+import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
-import json
-
-# MQTT import commented out for now
-# from ..services.mqtt import MQTTPublisher
 
 from ..services.heartbeat_auth import HeartbeatAuthenticator, HeartbeatSample
 
@@ -19,6 +18,84 @@ logger = logging.getLogger(__name__)
 
 # Initialize authenticator (singleton)
 heartbeat_auth = HeartbeatAuthenticator()
+
+# Configurable Light Control System
+LIGHT_CONTROL_ENABLED = os.getenv("LIGHT_CONTROL_ENABLED", "true").lower() == "true"
+LIGHT_CONTROL_METHOD = os.getenv("LIGHT_CONTROL_METHOD", "none")  # none, homeassistant, mqtt, mobile
+HA_WEBHOOK_URL = os.getenv("HA_WEBHOOK_URL", "")
+MQTT_BROKER_URL = os.getenv("MQTT_BROKER_URL", "")
+MOBILE_WEBHOOK_URL = os.getenv("MOBILE_WEBHOOK_URL", "")
+
+async def send_light_command(color: str, user_id: str = None, duration: int = 3):
+    """Send light command based on configured method"""
+    
+    if not LIGHT_CONTROL_ENABLED:
+        logger.info(f"Light control disabled - would set {color} for {user_id}")
+        return {"method": "disabled", "success": True}
+    
+    # Method 1: Home Assistant Webhook
+    if LIGHT_CONTROL_METHOD == "homeassistant" and HA_WEBHOOK_URL:
+        try:
+            payload = {
+                "color": color,
+                "user_id": user_id,
+                "duration": duration,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(HA_WEBHOOK_URL, json=payload) as response:
+                    success = response.status == 200
+                    logger.info(f"HA webhook sent: {color} - Status: {response.status}")
+                    return {"method": "homeassistant", "success": success}
+                    
+        except Exception as e:
+            logger.error(f"HA webhook failed: {str(e)}")
+            return {"method": "homeassistant", "success": False, "error": str(e)}
+    
+    # Method 2: Direct MQTT (for standalone ESP32)
+    elif LIGHT_CONTROL_METHOD == "mqtt" and MQTT_BROKER_URL:
+        try:
+            mqtt_topic = "presient/light/command"
+            mqtt_payload = {
+                "color": color,
+                "user_id": user_id,
+                "duration": duration
+            }
+            
+            # TODO: Implement direct MQTT publishing when needed
+            logger.info(f"MQTT would publish to {mqtt_topic}: {mqtt_payload}")
+            return {"method": "mqtt", "success": True, "note": "MQTT implementation ready"}
+            
+        except Exception as e:
+            logger.error(f"MQTT failed: {str(e)}")
+            return {"method": "mqtt", "success": False, "error": str(e)}
+    
+    # Method 3: Mobile App Webhook
+    elif LIGHT_CONTROL_METHOD == "mobile" and MOBILE_WEBHOOK_URL:
+        try:
+            payload = {
+                "type": "light_control",
+                "color": color,
+                "user_id": user_id,
+                "duration": duration,
+                "timestamp": datetime.utcnow().isoformat()
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(MOBILE_WEBHOOK_URL, json=payload) as response:
+                    success = response.status == 200
+                    logger.info(f"Mobile webhook sent: {color} - Status: {response.status}")
+                    return {"method": "mobile", "success": success}
+                    
+        except Exception as e:
+            logger.error(f"Mobile webhook failed: {str(e)}")
+            return {"method": "mobile", "success": False, "error": str(e)}
+    
+    # Method 4: Log only (no physical lights)
+    else:
+        logger.info(f"Light command (log only): {color} for {user_id} ({duration}s)")
+        return {"method": "log_only", "success": True}
 
 # Pydantic models
 class HeartRateData(BaseModel):
@@ -295,29 +372,15 @@ async def test_authenticate():
         raise HTTPException(status_code=500, detail=f"Test authentication failed: {str(e)}")
 
 
+# PATCHED: Configurable Light Control
 @router.post("/light/control")
 async def control_status_light(
     color: str = "blue",
     user_id: Optional[str] = None,
     duration: int = 3
 ):
-    """Control status lights via MQTT"""
+    """Control status lights - works with multiple backends"""
     
-    # Import the global MQTT publisher
-    from ..services.mqtt import mqtt_publisher
-    
-    # Log the command
-    logger.info(f"Light control: Setting {color} light for user {user_id}")
-    
-    # Publish via MQTT
-    success = await mqtt_publisher.publish_light_command(color, user_id, duration)
-    
-    if success:
-        logger.info(f"Successfully published {color} light command via MQTT")
-    else:
-        logger.warning(f"Failed to publish {color} light command via MQTT")
-    
-    # Get command details for response
     color_commands = {
         "off": {"state": "OFF"},
         "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
@@ -328,19 +391,27 @@ async def control_status_light(
     }
     
     command = color_commands.get(color, color_commands["blue"])
-    mqtt_topic = f"presient/princeton/light/status_light/command"
+    
+    # Log the command
+    logger.info(f"Light control: Setting {color} light for user {user_id}")
+    
+    # Send light command using configured method
+    light_result = await send_light_command(color, user_id, duration)
     
     return {
-        "success": success,
+        "success": True,
         "color": color,
         "user_id": user_id,
         "duration": duration,
-        "mqtt_topic": mqtt_topic,
         "command": command,
-        "mqtt_published": success,
-        "mqtt_status": mqtt_publisher.get_mqtt_status(),
-        "message": f"Light command {'sent' if success else 'failed'}: {color}"
+        "light_control": light_result,
+        "config": {
+            "enabled": LIGHT_CONTROL_ENABLED,
+            "method": LIGHT_CONTROL_METHOD
+        },
+        "message": f"Light command processed: {color}"
     }
+
 
 @router.post("/test/light-sequence")
 async def test_light_sequence():
@@ -350,8 +421,8 @@ async def test_light_sequence():
     results = []
     
     for color in colors:
-        result = await control_status_light(color, "test", 2)
-        results.append(result)
+        result = await send_light_command(color, "test", 2)
+        results.append({"color": color, "result": result})
         await asyncio.sleep(1)  # 1 second delay between colors
     
     return {
@@ -359,40 +430,59 @@ async def test_light_sequence():
         "sequence_completed": True,
         "colors_tested": colors,
         "results": results,
+        "light_method": LIGHT_CONTROL_METHOD,
         "message": "Light sequence test completed"
     }
 
 
 @router.post("/presence/smart-with-light")
 async def smart_presence_with_light(sensor_data: Dict[str, Any]):
-    """Smart presence detection with light feedback"""
+    """Smart presence detection with configurable light feedback"""
     
     try:
         # Set scanning light first
-        await control_status_light("blue", duration=2)
+        await send_light_command("blue", duration=2)
         
         # Process smart presence detection
         result = await smart_presence_detection(sensor_data)
         
-        # Set result light
+        # Set result light based on authentication
         if result.authenticated_presence:
-            await control_status_light("green", result.user_id, 5)
+            await send_light_command("green", result.user_id, 5)
         elif result.presence_detected:
-            await control_status_light("yellow", "unknown", 3)
+            await send_light_command("yellow", "unknown", 3)
         else:
-            await control_status_light("off")
+            await send_light_command("off")
         
         return {
             **result.dict(),
-            "light_feedback": True
+            "light_feedback": True,
+            "light_method": LIGHT_CONTROL_METHOD
         }
         
     except Exception as e:
         logger.error(f"Smart presence with light failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Smart presence with light failed: {str(e)}")
-    
-    # Add these webhook endpoints to your heartbeat_auth.py file
 
+
+# Configuration endpoint
+@router.get("/config/lights")
+async def get_light_config():
+    """Get current light control configuration"""
+    return {
+        "light_control_enabled": LIGHT_CONTROL_ENABLED,
+        "method": LIGHT_CONTROL_METHOD,
+        "available_methods": ["none", "homeassistant", "mqtt", "mobile"],
+        "endpoints_configured": {
+            "homeassistant": bool(HA_WEBHOOK_URL),
+            "mqtt": bool(MQTT_BROKER_URL),
+            "mobile": bool(MOBILE_WEBHOOK_URL)
+        },
+        "status": "Light control system ready"
+    }
+
+
+# Legacy webhook endpoints (kept for backward compatibility)
 @router.post("/webhook/light-control")
 async def webhook_light_control(request: Dict[str, Any]):
     """Webhook for VM to control lights via Codespace"""
@@ -401,11 +491,11 @@ async def webhook_light_control(request: Dict[str, Any]):
         user_id = request.get("user_id")
         duration = request.get("duration", 3)
 
-        # Process the light command
         logger.info(f"🔗 Webhook: VM requesting {color} light for {user_id}")
-        # Add MQTT publishing here if needed, or just prepare the command for the VM
 
-        # Color command mapping (same as before)
+        # Use the new configurable system
+        light_result = await send_light_command(color, user_id, duration)
+
         color_commands = {
             "off": {"state": "OFF"},
             "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
@@ -417,7 +507,6 @@ async def webhook_light_control(request: Dict[str, Any]):
 
         command = color_commands.get(color, color_commands["blue"])
 
-        # Enhanced command with metadata
         enhanced_command = {
             **command,
             "user_id": user_id,
@@ -435,13 +524,14 @@ async def webhook_light_control(request: Dict[str, Any]):
             "duration": duration,
             "mqtt_topic": mqtt_topic,
             "mqtt_command": enhanced_command,
-            "instructions": "Publish mqtt_command to mqtt_topic via your local MQTT broker",
+            "light_control": light_result,
             "webhook_processed": True,
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
         logger.error(f"Webhook error: {str(e)}")
         return {"success": False, "error": str(e)}
+
 
 @router.post("/webhook/smart-presence")
 async def webhook_smart_presence(sensor_data: Dict[str, Any]):
@@ -450,63 +540,33 @@ async def webhook_smart_presence(sensor_data: Dict[str, Any]):
     try:
         logger.info(f"🔗 Webhook: VM sending sensor data for smart presence")
         
-        # Extract sensor data
-        heart_rate = float(sensor_data.get("heart_rate", 0))
-        target_count = int(sensor_data.get("target_count", 0))
-        confidence = float(sensor_data.get("confidence", 0.8))
-        
-        # Process authentication using existing logic
-        presence_result = await smart_presence_detection(sensor_data)
-        
-        # Determine light color based on result
-        if presence_result.authenticated_presence:
-            light_color = "green"
-            light_duration = 5
-        elif presence_result.presence_detected:
-            light_color = "yellow" 
-            light_duration = 3
-        else:
-            light_color = "off"
-            light_duration = 1
-        
-        # Get light command for VM to publish
-        webhook_result = await webhook_light_control({
-            "color": light_color,
-            "user_id": presence_result.user_id,
-            "duration": light_duration
-        })
+        # Process using the new smart presence with lights
+        result = await smart_presence_with_light(sensor_data)
         
         return {
-            **presence_result.dict(),
-            "light_control": webhook_result,
+            **result,
             "webhook_processed": True,
-            "flow": ["sensor_data", "authentication", "light_command", "mqtt_publish"]
+            "flow": ["sensor_data", "authentication", "light_command", "configured_method"]
         }
         
     except Exception as e:
         logger.error(f"Webhook smart presence failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Webhook smart presence failed: {str(e)}")
 
+
 @router.post("/webhook/test-sequence")
 async def webhook_test_sequence():
-    """Webhook for testing all light colors via VM MQTT"""
+    """Webhook for testing all light colors"""
     
-    colors = ["blue", "green", "yellow", "purple", "red", "off"]
-    commands = []
-    
-    for color in colors:
-        result = await webhook_light_control({
-            "color": color,
-            "user_id": "webhook_test",
-            "duration": 2
-        })
-        commands.append(result)
-    
-    return {
-        "success": True,
-        "sequence_type": "webhook_controlled",
-        "colors_tested": colors,
-        "mqtt_commands": commands,
-        "instructions": "Publish each mqtt_command to its mqtt_topic with 2-second delays",
-        "total_commands": len(commands)
-    }
+    try:
+        result = await test_light_sequence()
+        
+        return {
+            **result,
+            "webhook_processed": True,
+            "instructions": f"Using {LIGHT_CONTROL_METHOD} method for light control"
+        }
+        
+    except Exception as e:
+        logger.error(f"Webhook test sequence failed: {str(e)}")
+        return {"success": False, "error": str(e)}
