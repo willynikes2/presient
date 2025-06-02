@@ -266,6 +266,212 @@ app.include_router(profiles.router)  # Update prefix in router or here
 app.include_router(presence.router)  # Update prefix in router or here
 app.include_router(heartbeat_auth.router)  # Add this line
 
+# ==================== Mobile Enrollment Endpoints ====================
+
+@app.post("/api/biometric/enroll", tags=["Mobile Enrollment"])
+async def enroll_user_mobile(enrollment_data: dict):
+    """Mobile app enrollment endpoint"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        logger.info(f"📱 Mobile enrollment for: {enrollment_data.get('display_name')}")
+        
+        # Validate required fields
+        required_fields = ['user_id', 'display_name', 'mean_hr', 'std_hr', 'range_hr']
+        for field in required_fields:
+            if field not in enrollment_data:
+                raise HTTPException(status_code=400, detail=f"Missing field: {field}")
+        
+        # Validate heart rate values
+        if not (30 <= enrollment_data['mean_hr'] <= 200):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid heart rate: {enrollment_data['mean_hr']}. Must be between 30-200 bpm."
+            )
+        
+        # Check biometric matcher is available
+        if not biometric_matcher:
+            raise HTTPException(status_code=503, detail="Biometric system not initialized")
+        
+        # Add to biometric matcher
+        success = biometric_matcher.add_profile(
+            user_id=enrollment_data['user_id'],
+            mean_hr=enrollment_data['mean_hr'],
+            std_hr=enrollment_data['std_hr'],
+            range_hr=enrollment_data['range_hr']
+        )
+        
+        if success:
+            # Update in-memory profiles
+            biometric_profiles[enrollment_data['user_id']] = {
+                'mean_hr': enrollment_data['mean_hr'],
+                'std_hr': enrollment_data['std_hr'],
+                'range_hr': enrollment_data['range_hr']
+            }
+            
+            # Save user metadata for mobile app display
+            metadata = {
+                "user_id": enrollment_data['user_id'],
+                "display_name": enrollment_data['display_name'],
+                "location": enrollment_data.get('location', 'Unknown'),
+                "enrolled_at": datetime.now().isoformat(),
+                "has_wearable": enrollment_data.get('has_wearable', False),
+                "sample_count": len(enrollment_data.get('heartbeat_pattern', [])),
+                "enrollment_duration": enrollment_data.get('enrollment_duration', 30),
+                "device_id": enrollment_data.get('device_id', 'mobile_enrollment')
+            }
+            
+            try:
+                import json
+                with open(f"user_metadata_{enrollment_data['user_id']}.json", "w") as f:
+                    json.dump(metadata, f, indent=2)
+            except Exception as e:
+                logger.warning(f"Failed to save metadata: {e}")
+            
+            logger.info(f"✅ Successfully enrolled {enrollment_data['display_name']} ({enrollment_data['user_id']})")
+            
+            return {
+                "success": True,
+                "user_id": enrollment_data['user_id'],
+                "message": f"Successfully enrolled {enrollment_data['display_name']}",
+                "profile_created": True,
+                "confidence_threshold": 0.5
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to create biometric profile")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Mobile enrollment failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Enrollment failed: {str(e)}")
+
+@app.get("/api/biometric/enrolled-users", tags=["Mobile Enrollment"])
+async def get_enrolled_users():
+    """Get enrolled users for mobile dashboard"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        enrolled_users = []
+        
+        # Use in-memory profiles if available, otherwise load from database
+        profiles_to_use = biometric_profiles
+        if not profiles_to_use and biometric_matcher:
+            profiles_to_use = biometric_matcher.load_profiles_from_db()
+        
+        for user_id, profile_data in profiles_to_use.items():
+            # Load metadata if available
+            metadata = {
+                "display_name": user_id.replace("_", " ").title(), 
+                "location": "Unknown",
+                "enrolled_at": datetime.now().isoformat(),
+                "has_wearable": False,
+                "sample_count": 30
+            }
+            
+            try:
+                import json
+                with open(f"user_metadata_{user_id}.json", "r") as f:
+                    file_metadata = json.load(f)
+                    metadata.update(file_metadata)
+            except FileNotFoundError:
+                pass
+            except Exception as e:
+                logger.warning(f"Failed to load metadata for {user_id}: {e}")
+            
+            enrolled_users.append({
+                "id": user_id,
+                "name": metadata["display_name"],
+                "location": metadata["location"],
+                "status": "enrolled",
+                "confidence": 0,
+                "lastSeen": metadata["enrolled_at"],
+                "mean_hr": profile_data.get("mean_hr", 0),
+                "std_hr": profile_data.get("std_hr", 0),
+                "range_hr": profile_data.get("range_hr", 0),
+                "has_wearable": metadata["has_wearable"],
+                "sample_count": metadata["sample_count"]
+            })
+        
+        logger.info(f"📊 Returning {len(enrolled_users)} enrolled users")
+        return {"enrolled_users": enrolled_users, "count": len(enrolled_users)}
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get enrolled users: {e}")
+        return {"enrolled_users": [], "count": 0}
+
+@app.delete("/api/biometric/user/{user_id}", tags=["Mobile Enrollment"])
+async def delete_enrolled_user(user_id: str):
+    """Delete an enrolled user (for testing/management)"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        # Remove from biometric matcher database
+        if biometric_matcher and user_id in biometric_profiles:
+            # Note: You may need to implement delete functionality in your SQLiteBiometricMatcher
+            # For now, we'll remove from in-memory cache
+            del biometric_profiles[user_id]
+            
+            # Remove metadata file
+            try:
+                import os
+                os.remove(f"user_metadata_{user_id}.json")
+            except FileNotFoundError:
+                pass
+            
+            logger.info(f"🗑️ Deleted user: {user_id}")
+            return {"success": True, "message": f"Deleted user {user_id}"}
+        else:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to delete user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete user: {str(e)}")
+
+@app.get("/api/biometric/user/{user_id}", tags=["Mobile Enrollment"])
+async def get_user_profile(user_id: str):
+    """Get detailed profile for a specific user"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        # Check if user exists in profiles
+        if user_id not in biometric_profiles:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        profile = biometric_profiles[user_id]
+        
+        # Load metadata
+        metadata = {
+            "display_name": user_id.replace("_", " ").title(),
+            "location": "Unknown",
+            "enrolled_at": datetime.now().isoformat(),
+            "has_wearable": False
+        }
+        
+        try:
+            import json
+            with open(f"user_metadata_{user_id}.json", "r") as f:
+                file_metadata = json.load(f)
+                metadata.update(file_metadata)
+        except FileNotFoundError:
+            pass
+        
+        return {
+            "user_id": user_id,
+            "display_name": metadata["display_name"],
+            "location": metadata["location"],
+            "biometric_profile": profile,
+            "metadata": metadata
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to get user profile {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get user profile: {str(e)}")
+
 # ==================== Root and Health Endpoints ====================
 @app.get("/", tags=["Health"])
 async def read_root():

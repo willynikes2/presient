@@ -1,0 +1,10 @@
+{
+  "user_id": "john_smith",
+  "display_name": "John Smith",
+  "location": "Living Room",
+  "enrolled_at": "2025-06-02T21:01:26.099165",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "test_enrollment"
+}

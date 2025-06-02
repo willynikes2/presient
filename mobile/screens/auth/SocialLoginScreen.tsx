@@ -1,5 +1,5 @@
-// Social Login Screen - mobile/screens/auth/SocialLoginScreen.tsx
-// Clean Google and Apple Sign-In interface
+// File: mobile/screens/auth/SocialLoginScreen.tsx
+// Create this file in mobile/screens/auth/SocialLoginScreen.tsx
 
 import React, { useState } from 'react'
 import {
@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  Image,
 } from 'react-native'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -22,6 +21,8 @@ const SocialLoginScreen = () => {
   const handleGoogleSignIn = async () => {
     try {
       setGoogleLoading(true)
+      console.log('🔄 Google sign-in button pressed')
+      
       const result = await signInWithGoogle()
       
       if (!result.success) {
@@ -32,6 +33,7 @@ const SocialLoginScreen = () => {
       }
       // Success is handled by auth state change
     } catch (error) {
+      console.error('Google sign-in error:', error)
       Alert.alert('Error', 'Google sign-in failed. Please try again.')
     } finally {
       setGoogleLoading(false)
@@ -41,6 +43,8 @@ const SocialLoginScreen = () => {
   const handleAppleSignIn = async () => {
     try {
       setAppleLoading(true)
+      console.log('🔄 Apple sign-in button pressed')
+      
       const result = await signInWithApple()
       
       if (!result.success) {
@@ -51,6 +55,7 @@ const SocialLoginScreen = () => {
       }
       // Success is handled by auth state change
     } catch (error) {
+      console.error('Apple sign-in error:', error)
       Alert.alert('Error', 'Apple sign-in failed. Please try again.')
     } finally {
       setAppleLoading(false)
@@ -112,6 +117,16 @@ const SocialLoginScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Temporary Debug Button */}
+        <TouchableOpacity
+          style={styles.debugButton}
+          onPress={() => {
+            Alert.alert('Debug', 'Social login screen loaded successfully!')
+          }}
+        >
+          <Text style={styles.debugText}>Test Button (Social Login Working)</Text>
+        </TouchableOpacity>
+
         {/* Footer */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>
@@ -159,6 +174,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 300,
     gap: 16,
+    marginBottom: 24,
   },
   googleButton: {
     backgroundColor: '#ffffff',
@@ -219,8 +235,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  debugButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 24,
+  },
+  debugText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   footer: {
-    marginTop: 48,
+    marginTop: 24,
     paddingHorizontal: 16,
   },
   footerText: {
