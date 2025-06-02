@@ -1,5 +1,5 @@
 """
-Enhanced main.py with auth integration and improved structure
+Enhanced main.py with auth integration, improved structure, and SQLite biometric authentication
 """
 
 import logging
@@ -42,6 +42,9 @@ from backend.utils.exceptions import (
 # Import MQTT service
 from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
 
+# Import SQLite biometric matcher
+from backend.utils.biometric_matcher import SQLiteBiometricMatcher, load_profiles_from_db
+
 # Configure logging to stdout
 logging.basicConfig(
     level=logging.INFO,
@@ -54,6 +57,10 @@ logging.basicConfig(
 # Create logger for this module
 logger = logging.getLogger(__name__)
 
+# Global biometric matcher instance
+biometric_matcher: SQLiteBiometricMatcher = None
+biometric_profiles: dict = {}
+
 # ==================== Lifespan Manager ====================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,6 +72,9 @@ async def lifespan(app: FastAPI):
     logger.info("Creating database tables...")
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables ready!")
+    
+    # Initialize biometric system
+    await startup_biometric_system()
     
     # Initialize MQTT
     await initialize_mqtt()
@@ -80,12 +90,78 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("🛑 Presient API shutting down...")
+    await shutdown_biometric_system()
     await shutdown_mqtt()
+
+async def startup_biometric_system():
+    """Initialize biometric matching system on startup"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        # Get database path from environment or use default
+        db_path = os.getenv("PRESIENT_DB_PATH", "presient.db")
+        logger.info(f"📊 Initializing biometric database: {db_path}")
+        
+        # Initialize SQLite biometric matcher
+        biometric_matcher = SQLiteBiometricMatcher(db_path)
+        
+        # Load existing profiles from database
+        biometric_profiles = biometric_matcher.load_profiles_from_db()
+        
+        logger.info(f"✅ Loaded {len(biometric_profiles)} biometric profiles")
+        
+        # Log loaded users (without sensitive data)
+        if biometric_profiles:
+            user_list = list(biometric_profiles.keys())
+            logger.info(f"👥 Enrolled users: {', '.join(user_list)}")
+        else:
+            logger.info("📭 No biometric profiles found - system ready for enrollment")
+        
+        # Validate database integrity
+        profile_count = biometric_matcher.get_profile_count()
+        logger.info(f"🔍 Database integrity check: {profile_count} profiles in DB")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize biometric system: {e}")
+        # Don't fail startup, but log the error
+        biometric_matcher = None
+        biometric_profiles = {}
+
+async def shutdown_biometric_system():
+    """Clean shutdown of biometric system"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        if biometric_matcher:
+            logger.info("💾 Biometric system shutdown complete")
+        
+        biometric_matcher = None
+        biometric_profiles = {}
+        
+    except Exception as e:
+        logger.error(f"❌ Error during biometric system shutdown: {e}")
+
+def get_biometric_matcher() -> SQLiteBiometricMatcher:
+    """Get the global biometric matcher instance"""
+    global biometric_matcher
+    
+    if biometric_matcher is None:
+        raise HTTPException(
+            status_code=503, 
+            detail="Biometric system not initialized"
+        )
+    
+    return biometric_matcher
+
+def get_biometric_profiles() -> dict:
+    """Get the loaded biometric profiles"""
+    global biometric_profiles
+    return biometric_profiles
 
 # ==================== Initialize FastAPI App ====================
 app = FastAPI(
     title="Presient API",
-    description="Biometric presence authentication system using mmWave heartbeat recognition",
+    description="Biometric presence authentication system using mmWave heartbeat recognition with SQLite storage",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -194,10 +270,17 @@ app.include_router(heartbeat_auth.router)  # Add this line
 @app.get("/", tags=["Health"])
 async def read_root():
     """Root endpoint to verify API is running."""
+    global biometric_profiles
+    
     return {
         "message": "Presient API is running",
         "status": "healthy",
         "version": "1.0.0",
+        "biometric_system": {
+            "initialized": biometric_matcher is not None,
+            "enrolled_users": len(biometric_profiles),
+            "database_path": getattr(biometric_matcher, 'db_path', None) if biometric_matcher else None
+        },
         "docs": "/docs",
         "redoc": "/redoc"
     }
@@ -205,6 +288,8 @@ async def read_root():
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Comprehensive health check endpoint."""
+    global biometric_matcher, biometric_profiles
+    
     # Check database
     db_healthy = False
     try:
@@ -215,6 +300,23 @@ async def health_check():
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
     
+    # Check biometric system health
+    biometric_health = {
+        "matcher_initialized": biometric_matcher is not None,
+        "profiles_loaded": len(biometric_profiles),
+        "database_accessible": False
+    }
+    
+    if biometric_matcher:
+        try:
+            # Test database access
+            profile_count = biometric_matcher.get_profile_count()
+            biometric_health["database_accessible"] = True
+            biometric_health["database_profile_count"] = profile_count
+        except Exception as e:
+            logger.error(f"Biometric database health check failed: {e}")
+            biometric_health["database_error"] = str(e)
+    
     # Overall health
     is_healthy = db_healthy and (mqtt_publisher.connected or not mqtt_publisher.enabled)
     
@@ -222,6 +324,7 @@ async def health_check():
         "status": "healthy" if is_healthy else "unhealthy",
         "checks": {
             "database": "connected" if db_healthy else "disconnected",
+            "biometric_system": biometric_health,
             "mqtt": {
                 "enabled": mqtt_publisher.enabled,
                 "connected": mqtt_publisher.connected
@@ -230,6 +333,53 @@ async def health_check():
         "version": "1.0.0",
         "environment": os.getenv("ENVIRONMENT", "development")
     }
+
+# ==================== Biometric System Status Endpoints ====================
+
+@app.get("/api/system/biometric-status", tags=["Biometric"])
+async def biometric_system_status():
+    """Detailed biometric system status for debugging"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        status = {
+            "biometric_matcher": {
+                "initialized": biometric_matcher is not None,
+                "database_path": getattr(biometric_matcher, 'db_path', None) if biometric_matcher else None,
+                "tolerance_percent": getattr(biometric_matcher, 'tolerance_percent', None) if biometric_matcher else None
+            },
+            "profiles": {
+                "loaded_count": len(biometric_profiles),
+                "loaded_users": list(biometric_profiles.keys()) if biometric_profiles else []
+            },
+            "environment": {
+                "db_path": os.getenv("PRESIENT_DB_PATH", "presient.db"),
+                "environment": os.getenv("ENVIRONMENT", "development")
+            }
+        }
+        
+        # Add database stats if available
+        if biometric_matcher:
+            try:
+                db_count = biometric_matcher.get_profile_count()
+                status["database"] = {
+                    "profile_count": db_count,
+                    "accessible": True
+                }
+            except Exception as e:
+                status["database"] = {
+                    "accessible": False,
+                    "error": str(e)
+                }
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"Biometric system status check failed: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Biometric system status check failed", "detail": str(e)}
+        )
 
 # ==================== MQTT Status Endpoints ====================
 @app.get("/api/mqtt/status", tags=["MQTT"])
@@ -336,6 +486,37 @@ if os.getenv("ENVIRONMENT", "development") == "development":
             raise OperationalError("Connection failed", None, None)
         else:
             return {"message": f"No test configured for exception type {exception_type}"}
+    
+    @app.get("/test/biometric", tags=["Testing"])
+    async def test_biometric_system():
+        """Test biometric system functionality."""
+        global biometric_matcher
+        
+        if not biometric_matcher:
+            return {"error": "Biometric system not initialized"}
+        
+        try:
+            # Test database access
+            profile_count = biometric_matcher.get_profile_count()
+            profiles = biometric_matcher.load_profiles_from_db()
+            
+            # Test matching with fake data
+            test_hr = [72, 75, 68, 70, 74]
+            matched_user = biometric_matcher.match_profile(test_hr)
+            
+            return {
+                "biometric_system": "functional",
+                "database_profiles": profile_count,
+                "loaded_profiles": len(profiles),
+                "test_match_result": matched_user or "no_match",
+                "test_hr_values": test_hr
+            }
+            
+        except Exception as e:
+            return {
+                "biometric_system": "error",
+                "error": str(e)
+            }
 
 # ==================== Additional imports for proper functionality ====================
 import json

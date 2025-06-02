@@ -1,6 +1,6 @@
 """
 Enhanced Presence Routes - Combines sensor presence detection with user online status
-Keeps all existing functionality and adds real-time user presence
+Keeps all existing functionality and adds real-time user presence + SQLite biometric authentication
 """
 
 import logging
@@ -13,6 +13,7 @@ from typing import Optional, List, Dict, Set
 from collections import defaultdict
 import asyncio
 import json
+import statistics
 
 from backend.db import get_db
 from backend.models.presence_events import PresenceEvent
@@ -21,9 +22,15 @@ from backend.services.mqtt import mqtt_publisher
 from backend.routes.auth import get_current_user
 import uuid
 
+# Import SQLite biometric matcher
+from backend.utils.biometric_matcher import SQLiteBiometricMatcher
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/presence", tags=["Presence"])
+
+# Initialize SQLite biometric matcher
+biometric_matcher = SQLiteBiometricMatcher()
 
 # ==================== Your Existing Models ====================
 
@@ -32,6 +39,11 @@ class PresenceEventCreate(BaseModel):
     user_id: str
     sensor_id: str
     confidence: float = Field(..., ge=0.0, le=1.0)
+    # Add biometric data fields
+    heart_rate: Optional[float] = Field(None, ge=30.0, le=220.0)
+    breathing_rate: Optional[float] = Field(None, ge=5.0, le=50.0)
+    distance: Optional[float] = Field(None, ge=0.0)
+    target_count: Optional[int] = Field(1, ge=0)
     
     class Config:
         # TODO: Convert to ConfigDict
@@ -39,7 +51,11 @@ class PresenceEventCreate(BaseModel):
             "example": {
                 "user_id": "user123",
                 "sensor_id": "sensor001",
-                "confidence": 0.95
+                "confidence": 0.95,
+                "heart_rate": 72.0,
+                "breathing_rate": 16.0,
+                "distance": 150.0,
+                "target_count": 1
             }
         }
 
@@ -133,7 +149,7 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-# ==================== Your Existing Routes (Enhanced) ====================
+# ==================== Your Existing Routes (Enhanced with Biometric Authentication) ====================
 
 @router.post("/event", response_model=PresenceEventResponse, status_code=201)
 async def create_presence_event(
@@ -141,20 +157,72 @@ async def create_presence_event(
     db: Session = Depends(get_db)
 ):
     """
-    Create a new presence detection event.
+    Create a new presence detection event with biometric authentication.
 
     This endpoint receives presence detection data from sensors and:
-    1. Stores the event in the database
-    2. Publishes the event to MQTT for real-time integrations
-    3. Updates user location in connection manager
-    4. Returns the created event details
+    1. Performs biometric authentication using heart rate data
+    2. Stores the event in the database with authentication result
+    3. Publishes the event to MQTT for real-time integrations
+    4. Updates user location in connection manager
+    5. Returns the created event details with authentication status
     """
-    logger.info(f"Creating presence event for user {event_data.user_id}")
+    logger.info(f"🎯 Processing presence event from {event_data.sensor_id} - HR: {event_data.heart_rate}")
 
     try:
-        # Create presence event
+        # Initialize authentication variables
+        authenticated_user_id = None
+        biometric_confidence = 0.0
+        authentication_status = "no_biometric_data"
+        authentication_message = "No heart rate data provided"
+
+        # Perform biometric authentication if heart rate data is available
+        if event_data.heart_rate and 30 <= event_data.heart_rate <= 220:
+            logger.info(f"🧬 Performing biometric authentication - HR: {event_data.heart_rate}")
+            
+            # Create heart rate pattern for matching
+            hr_values = [event_data.heart_rate]
+            
+            # Add variation based on breathing rate if available
+            if event_data.breathing_rate and event_data.breathing_rate > 0:
+                hr_variation = max(1.0, event_data.breathing_rate * 0.2)
+                hr_values.extend([
+                    event_data.heart_rate + hr_variation,
+                    event_data.heart_rate - hr_variation,
+                    event_data.heart_rate + (hr_variation * 0.5)
+                ])
+            
+            # Perform biometric matching
+            try:
+                matched_user_id = biometric_matcher.match_profile(hr_values)
+                
+                if matched_user_id:
+                    authenticated_user_id = matched_user_id
+                    # Calculate confidence based on profile match
+                    user_profile = biometric_matcher.get_user_profile(matched_user_id)
+                    if user_profile:
+                        biometric_confidence = calculate_match_confidence(event_data.heart_rate, user_profile)
+                    else:
+                        biometric_confidence = 0.8  # Default confidence
+                    
+                    authentication_status = "authenticated"
+                    authentication_message = f"Biometric match: {matched_user_id}"
+                    logger.info(f"✅ Biometric authentication successful: {matched_user_id} (confidence: {biometric_confidence:.3f})")
+                else:
+                    authentication_status = "unknown_person"
+                    authentication_message = "No biometric match found - unknown person"
+                    logger.info(f"❌ No biometric match found for HR pattern: {hr_values}")
+                
+            except Exception as e:
+                logger.error(f"Biometric matching failed: {e}")
+                authentication_status = "matching_error"
+                authentication_message = f"Biometric matching error: {str(e)}"
+        
+        # Use authenticated user ID if available, otherwise use provided user_id
+        final_user_id = authenticated_user_id or event_data.user_id
+
+        # Create presence event with authentication results
         presence_event = PresenceEvent(
-            user_id=event_data.user_id,
+            user_id=final_user_id,
             sensor_id=event_data.sensor_id,
             confidence=event_data.confidence,
             timestamp=datetime.now(timezone.utc)
@@ -171,30 +239,66 @@ async def create_presence_event(
         profile = None
         sensor_location = None
         try:
-            profile = db.query(Profile).filter(Profile.user_id == event_data.user_id).first()
+            profile = db.query(Profile).filter(Profile.user_id == final_user_id).first()
             # TODO: Get sensor location from sensor registry
             sensor_location = f"Room-{event_data.sensor_id}"  # Placeholder
         except Exception as e:
-            logger.warning(f"Could not fetch profile for user {event_data.user_id}: {e}")
+            logger.warning(f"Could not fetch profile for user {final_user_id}: {e}")
 
         # Update user location in connection manager
         if sensor_location:
             manager.update_sensor_location(
-                event_data.user_id,
+                final_user_id,
                 sensor_location,
                 event_data.confidence
             )
 
-        # Publish to MQTT
+        # Prepare enhanced response with biometric data
+        response_data = {
+            "event_processed": True,
+            "presence_detected": True,
+            "event_id": presence_event.id,
+            "user_id": final_user_id,
+            "sensor_id": event_data.sensor_id,
+            "timestamp": presence_event.timestamp.isoformat(),
+            "biometric_authentication": {
+                "status": authentication_status,
+                "authenticated": authenticated_user_id is not None,
+                "matched_user_id": authenticated_user_id,
+                "confidence": round(biometric_confidence, 3),
+                "message": authentication_message
+            },
+            "sensor_data": {
+                "heart_rate": event_data.heart_rate,
+                "breathing_rate": event_data.breathing_rate,
+                "distance": event_data.distance,
+                "target_count": event_data.target_count,
+                "sensor_confidence": event_data.confidence
+            }
+        }
+
+        # Publish to MQTT with enhanced data
         try:
             await mqtt_publisher.publish_presence_event(presence_event, profile)
+            
+            # Also publish biometric authentication result
+            if mqtt_publisher.connected:
+                biometric_topic = f"{mqtt_publisher.base_topic}/biometric/authentication"
+                biometric_payload = {
+                    "event_id": presence_event.id,
+                    "sensor_id": event_data.sensor_id,
+                    "authentication": response_data["biometric_authentication"],
+                    "timestamp": presence_event.timestamp.isoformat()
+                }
+                await mqtt_publisher.publish(biometric_topic, json.dumps(biometric_payload))
+            
             logger.debug(f"Published presence event {presence_event.id} to MQTT")
         except Exception as e:
             logger.error(f"Failed to publish presence event to MQTT: {e}")
 
         return JSONResponse(
             status_code=201,
-            content=PresenceEventResponse.model_validate(presence_event).model_dump_json()
+            content=response_data
         )
 
     except Exception as e:
@@ -202,9 +306,162 @@ async def create_presence_event(
         db.rollback()
         raise HTTPException(status_code=500, detail="Failed to create presence event")
 
+# ==================== New Biometric Authentication Endpoints ====================
 
-# ==================== New Routes for User Status ====================
+@router.get("/biometric/enrolled-users")
+async def get_biometric_enrolled_users():
+    """Get list of users enrolled in biometric system"""
+    try:
+        profiles = biometric_matcher.load_profiles_from_db()
+        
+        users = []
+        for user_id, profile_data in profiles.items():
+            users.append({
+                "user_id": user_id,
+                "created_at": profile_data.get("created_at"),
+                "mean_hr_range": f"{profile_data['mean_hr']:.0f} ± {profile_data['std_hr']:.0f} bpm",
+                "hr_range": f"{profile_data['range_hr']:.0f} bpm range"
+            })
+        
+        return {
+            "enrolled_users": users,
+            "total_count": len(users),
+            "matcher_tolerance": f"±{biometric_matcher.tolerance_percent}%",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get biometric enrolled users: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/biometric/enroll")
+async def enroll_biometric_user(
+    enrollment_data: Dict,
+    db: Session = Depends(get_db)
+):
+    """
+    Enroll a new user in the biometric system
+    
+    Expected data:
+    {
+        "user_id": "john_doe",
+        "heart_rate_samples": [72, 75, 68, 70, 74, 73, 69, 71, 76, 72]
+    }
+    """
+    try:
+        user_id = enrollment_data.get("user_id")
+        hr_samples = enrollment_data.get("heart_rate_samples", [])
+        
+        if not user_id:
+            raise HTTPException(status_code=400, detail="user_id is required")
+        
+        if len(hr_samples) < 5:
+            raise HTTPException(status_code=400, detail="At least 5 heart rate samples required for enrollment")
+        
+        # Validate heart rate samples
+        valid_samples = [hr for hr in hr_samples if 30 <= hr <= 220]
+        if len(valid_samples) < 5:
+            raise HTTPException(status_code=400, detail="Insufficient valid heart rate samples")
+        
+        # Calculate biometric features
+        mean_hr = statistics.mean(valid_samples)
+        std_hr = statistics.stdev(valid_samples) if len(valid_samples) > 1 else 0.0
+        range_hr = max(valid_samples) - min(valid_samples)
+        
+        # Add profile to database
+        success = biometric_matcher.add_profile(user_id, mean_hr, std_hr, range_hr)
+        
+        if success:
+            logger.info(f"✅ Successfully enrolled user in biometric system: {user_id}")
+            return {
+                "enrollment_successful": True,
+                "user_id": user_id,
+                "profile_stats": {
+                    "mean_hr": round(mean_hr, 1),
+                    "std_hr": round(std_hr, 1),
+                    "range_hr": round(range_hr, 1),
+                    "sample_count": len(valid_samples)
+                },
+                "message": f"User {user_id} successfully enrolled in biometric system",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to save biometric profile")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Biometric enrollment failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Biometric enrollment failed: {str(e)}")
+
+@router.delete("/biometric/user/{user_id}")
+async def delete_biometric_profile(user_id: str):
+    """Delete a user's biometric profile"""
+    try:
+        success = biometric_matcher.delete_profile(user_id)
+        
+        if success:
+            logger.info(f"✅ Deleted biometric profile for user: {user_id}")
+            return {
+                "deletion_successful": True,
+                "user_id": user_id,
+                "message": f"Biometric profile for {user_id} deleted successfully",
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        else:
+            raise HTTPException(status_code=404, detail=f"Biometric profile for {user_id} not found")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Biometric profile deletion failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+
+@router.get("/biometric/debug/auth-logs")
+async def get_biometric_auth_logs(limit: int = Query(50, ge=1, le=200)):
+    """Get recent biometric authentication attempts for debugging"""
+    try:
+        import sqlite3
+        
+        conn = sqlite3.connect(biometric_matcher.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT timestamp, live_mean_hr, live_std_hr, live_range_hr, 
+                   matched_user_id, confidence, status
+            FROM auth_logs 
+            ORDER BY timestamp DESC 
+            LIMIT ?
+        ''', (limit,))
+        
+        logs = []
+        for row in cursor.fetchall():
+            timestamp, live_mean, live_std, live_range, matched_user, confidence, status = row
+            logs.append({
+                "timestamp": timestamp,
+                "live_biometrics": {
+                    "mean_hr": round(live_mean, 1) if live_mean else None,
+                    "std_hr": round(live_std, 1) if live_std else None,
+                    "range_hr": round(live_range, 1) if live_range else None
+                },
+                "matched_user_id": matched_user,
+                "confidence": round(confidence, 3) if confidence else 0.0,
+                "status": status
+            })
+        
+        conn.close()
+        
+        return {
+            "biometric_auth_logs": logs,
+            "total_entries": len(logs),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to get biometric auth logs: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== New Models for User Status ====================
 
 @router.get("/events")
 async def list_presence_events(
@@ -677,3 +934,30 @@ async def get_user_presence_analytics(
         "peak_hours": [{"hour": h, "count": c} for h, c in peak_hours],
         "average_confidence": sum(e.confidence for e in events) / len(events)
     }
+
+# ==================== Helper Functions ====================
+
+def calculate_match_confidence(current_hr: float, stored_profile: Dict) -> float:
+    """Calculate confidence score for a biometric match"""
+    if not stored_profile:
+        return 0.0
+    
+    try:
+        stored_mean = stored_profile["mean_hr"]
+        stored_std = stored_profile["std_hr"]
+        
+        # Calculate how far current HR is from stored mean in terms of standard deviations
+        if stored_std > 0:
+            z_score = abs(current_hr - stored_mean) / stored_std
+            # Convert z-score to confidence (higher z-score = lower confidence)
+            confidence = max(0.0, 1.0 - (z_score * 0.2))
+        else:
+            # No variability data, use simple percentage difference
+            diff_percent = abs(current_hr - stored_mean) / stored_mean * 100
+            confidence = max(0.0, 1.0 - (diff_percent / 15.0))  # 15% tolerance
+        
+        return min(1.0, confidence)
+        
+    except Exception as e:
+        logger.error(f"Confidence calculation failed: {e}")
+        return 0.5  # Default moderate confidence
