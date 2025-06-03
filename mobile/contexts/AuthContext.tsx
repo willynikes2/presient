@@ -1,12 +1,10 @@
-// Updated AuthContext - mobile/contexts/AuthContext.tsx
-// Integrated with Google and Apple social login
-
+// File: mobile/contexts/AuthContext.tsx
+// Fixed to handle existing user profiles and prevent duplicates
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import * as Linking from 'expo-linking'
-import { supabase, createUserProfile } from '../lib/supabase'
+import { supabase } from '../lib/supabase'
 import { signInWithGoogle, signInWithApple, handleAuthCallback } from '../lib/socialAuth'
-import * as SecureStore from 'expo-secure-store'
 
 interface AuthContextType {
   user: User | null
@@ -18,11 +16,11 @@ interface AuthContextType {
   clearAuthCache: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType>({} as AuthContextType)
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider')
   }
   return context
@@ -33,157 +31,191 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Clear all auth cache
-  const clearAuthCache = async () => {
+  // Enhanced profile creation with duplicate checking
+  const createUserProfileSafe = async (user: User) => {
     try {
-      console.log('🧹 Clearing auth cache...')
+      console.log('🔍 Checking if profile exists for:', user.email)
       
-      // Clear SecureStore auth data
-      await SecureStore.deleteItemAsync('supabase-auth-token')
-      await SecureStore.deleteItemAsync('sb-lteeihdzrgxlgedmwwfk-auth-token')
-      
-      // Clear any other possible auth keys
-      const possibleKeys = [
-        'supabase.auth.token',
-        'sb-auth-token',
-        'auth-token',
-        'access_token',
-        'refresh_token'
-      ]
-      
-      for (const key of possibleKeys) {
-        try {
-          await SecureStore.deleteItemAsync(key)
-        } catch (e) {
-          // Key might not exist, that's fine
-        }
+      // First check if profile already exists
+      const { data: existingProfile, error: checkError } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', user.id)
+        .single()
+
+      if (existingProfile) {
+        console.log('✅ Profile already exists, no need to create')
+        return { success: true, existed: true }
       }
-      
-      console.log('✅ Auth cache cleared')
+
+      if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows found (expected)
+        console.log('⚠️ Error checking existing profile:', checkError)
+      }
+
+      // Profile doesn't exist, create it
+      console.log('➕ Creating new user profile...')
+      const { data: newProfile, error: createError } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: user.id,
+          email: user.email || '',
+          first_name: user.user_metadata?.first_name || '',
+          last_name: user.user_metadata?.last_name || '',
+          avatar_url: user.user_metadata?.avatar_url || null,
+        })
+        .select()
+        .single()
+
+      if (createError) {
+        // Handle duplicate key error gracefully
+        if (createError.code === '23505') {
+          console.log('✅ Profile already exists (created by trigger), continuing...')
+          return { success: true, existed: true }
+        }
+        console.error('❌ Error creating profile:', createError)
+        return { success: false, error: createError }
+      }
+
+      console.log('✅ Profile created successfully:', newProfile)
+      return { success: true, existed: false, profile: newProfile }
+
     } catch (error) {
-      console.error('❌ Error clearing auth cache:', error)
+      console.error('❌ Exception creating profile:', error)
+      return { success: false, error }
     }
   }
 
   useEffect(() => {
-    // Handle deep links for OAuth callbacks
-    const subscription = Linking.addEventListener('url', async ({ url }) => {
-      console.log('🔗 Deep link received:', url)
-      
-      if (url.includes('auth/callback')) {
-        const result = await handleAuthCallback(url)
-        if (result.success) {
-          console.log('✅ OAuth callback handled successfully')
-        } else {
-          console.error('❌ OAuth callback failed:', result.error)
-        }
-      }
-    })
-
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setLoading(false)
-    })
-
-    // Listen for auth changes
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event)
-        setSession(session)
-        setUser(session?.user ?? null)
-        setLoading(false)
-
-        // Handle different auth events
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('🔄 User signed in, checking/creating profile...')
+    const getInitialSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        
+        if (error) {
+          console.error('Error getting initial session:', error)
+        } else {
+          console.log('Auth state changed:', session ? 'SIGNED_IN' : 'INITIAL_SESSION')
+          setSession(session)
+          setUser(session?.user ?? null)
           
-          // For social login, create profile if it doesn't exist
-          const result = await createUserProfile(session.user)
-          if (result.success) {
-            console.log('✅ Profile created/verified successfully')
-          } else {
-            // Profile might already exist, that's fine for social login
-            console.log('ℹ️ Profile creation skipped (might already exist)')
+          // Create profile if user exists but we haven't created one yet
+          if (session?.user) {
+            await createUserProfileSafe(session.user)
           }
         }
+      } catch (error) {
+        console.error('Exception getting initial session:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    getInitialSession()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session ? 'SIGNED_IN' : 'SIGNED_OUT')
+        setSession(session)
+        setUser(session?.user ?? null)
         
-        if (event === 'SIGNED_OUT') {
-          console.log('🔄 User signed out, clearing cache...')
-          await clearAuthCache()
+        // Create profile for new users
+        if (event === 'SIGNED_IN' && session?.user) {
+          await createUserProfileSafe(session.user)
         }
+        
+        setLoading(false)
       }
     )
 
+    // Handle deep links for OAuth callbacks
+    const handleUrl = (url: string) => {
+      console.log('🔗 Handling deep link:', url)
+      handleAuthCallback(url)
+    }
+
+    // Listen for incoming links
+    const subscription2 = Linking.addEventListener('url', ({ url }) => handleUrl(url))
+
     return () => {
-      subscription?.remove()
-      authSubscription.unsubscribe()
+      subscription?.unsubscribe()
+      subscription2?.remove()
     }
   }, [])
 
+  // Google Sign-In
   const signInWithGoogleOAuth = async () => {
     try {
       setLoading(true)
-      console.log('🔄 Starting Google OAuth sign-in...')
-      
+      console.log('🔵 Starting Google OAuth sign-in...')
       const result = await signInWithGoogle()
       
       if (result.success) {
         console.log('✅ Google sign-in successful')
-        return { success: true, data: result.data }
       } else {
-        console.error('❌ Google sign-in failed:', result.error)
-        return { success: false, error: result.error }
+        console.log('❌ Google sign-in failed:', result.error)
       }
+      
+      return result
     } catch (error) {
-      console.error('💥 Google sign-in exception:', error)
+      console.error('❌ Google sign-in exception:', error)
       return { success: false, error }
     } finally {
       setLoading(false)
     }
   }
 
+  // Apple Sign-In
   const signInWithAppleOAuth = async () => {
     try {
       setLoading(true)
-      console.log('🔄 Starting Apple OAuth sign-in...')
-      
+      console.log('🍎 Starting Apple OAuth sign-in...')
       const result = await signInWithApple()
       
       if (result.success) {
         console.log('✅ Apple sign-in successful')
-        return { success: true, data: result.data }
       } else {
-        console.error('❌ Apple sign-in failed:', result.error)
-        return { success: false, error: result.error }
+        console.log('❌ Apple sign-in failed:', result.error)
       }
+      
+      return result
     } catch (error) {
-      console.error('💥 Apple sign-in exception:', error)
+      console.error('❌ Apple sign-in exception:', error)
       return { success: false, error }
     } finally {
       setLoading(false)
     }
   }
 
+  // Sign out
   const signOut = async () => {
     try {
-      setLoading(true)
-      console.log('🔄 Signing out...')
-      
+      console.log('👋 Signing out...')
+      await clearAuthCache()
       const { error } = await supabase.auth.signOut()
+      
       if (error) {
-        console.error('❌ Sign out error:', error)
+        console.error('Sign out error:', error)
       } else {
         console.log('✅ Signed out successfully')
       }
+    } catch (error) {
+      console.error('Exception during sign out:', error)
+    }
+  }
+
+  // Clear authentication cache
+  const clearAuthCache = async () => {
+    try {
+      console.log('🧹 Clearing auth cache...')
       
-      // Clear cache after sign out
-      await clearAuthCache()
-    } catch (err) {
-      console.error('💥 Sign out exception:', err)
-    } finally {
-      setLoading(false)
+      // Clear any cached user data
+      setUser(null)
+      setSession(null)
+      
+      console.log('✅ Auth cache cleared')
+    } catch (error) {
+      console.error('Error clearing auth cache:', error)
     }
   }
 
@@ -197,9 +229,5 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     clearAuthCache,
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

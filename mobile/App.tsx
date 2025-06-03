@@ -1,4 +1,4 @@
-// Fixed App.tsx - Proper Component Exports
+// Patched App.tsx - BiometricEnrollmentScreen Connected
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native'
@@ -9,10 +9,11 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
 // Screens
-import SocialLoginScreen from './screens/auth/SocialLoginScreen'
+import HybridLoginScreen from './screens/auth/HybridLoginScreen'
 import DashboardScreen from './screens/main/DashboardScreen'
+import BiometricEnrollmentScreen from './screens/main/BiometricEnrollmentScreen'
 
-// Simple placeholder screens (to fix navigation errors)
+// Simple placeholder screens (for buttons that aren't implemented yet)
 const ProfileScreen = () => {
   const { View, Text, StyleSheet } = require('react-native')
   return (
@@ -28,16 +29,6 @@ const DeviceManagementScreen = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Device Management</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
-    </View>
-  )
-}
-
-const BiometricEnrollmentScreen = () => {
-  const { View, Text, StyleSheet } = require('react-native')
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Biometric Enrollment</Text>
       <Text style={styles.subtitle}>Coming Soon</Text>
     </View>
   )
@@ -85,7 +76,7 @@ const styles = require('react-native').StyleSheet.create({
 
 // Navigation Types
 export type RootStackParamList = {
-  SocialLogin: undefined
+  HybridLogin: undefined
   Dashboard: undefined
   Profile: undefined
   DeviceManagement: undefined
@@ -110,14 +101,14 @@ const DarkTheme = {
   },
 }
 
-// Auth Navigator (Social Login)
+// Auth Navigator (Hybrid Login - Social + Email/Password)
 const AuthNavigator = () => (
   <Stack.Navigator
     screenOptions={{
       headerShown: false,
     }}
   >
-    <Stack.Screen name="SocialLogin" component={SocialLoginScreen} />
+    <Stack.Screen name="HybridLogin" component={HybridLoginScreen} />
   </Stack.Navigator>
 )
 
