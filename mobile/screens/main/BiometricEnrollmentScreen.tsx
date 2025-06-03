@@ -48,39 +48,97 @@ const BiometricEnrollmentScreen = () => {
     const duration = 30000 // 30 seconds
     const sampleRate = 1000 // 1 sample per second
     const samples = duration / sampleRate
-    
+
     const heartbeatPattern: number[] = []
     let currentTime = 0
-    
+
     // Simulate realistic heartbeat data
     for (let i = 0; i < samples; i++) {
       // Generate realistic heart rate between 60-100 BPM with some variation
       const baseHR = 70 + Math.sin(currentTime / 10000) * 10 // Slow variation
       const noise = (Math.random() - 0.5) * 5 // Small random variation
       const heartRate = Math.max(50, Math.min(120, baseHR + noise))
-      
+
       heartbeatPattern.push(Math.round(heartRate * 100) / 100)
       currentTime += 1000
-      
+
       // Update progress
       const progress = ((i + 1) / samples) * 100
       setRecordingProgress(progress)
-      
+
       // Small delay to simulate real-time recording
       await new Promise(resolve => setTimeout(resolve, 100))
     }
-    
+
     // Calculate statistics
     const mean_hr = heartbeatPattern.reduce((sum, hr) => sum + hr, 0) / heartbeatPattern.length
     const variance = heartbeatPattern.reduce((sum, hr) => sum + Math.pow(hr - mean_hr, 2), 0) / heartbeatPattern.length
     const std_hr = Math.sqrt(variance)
     const range_hr = Math.max(...heartbeatPattern) - Math.min(...heartbeatPattern)
-    
+
     return {
       heartbeat_pattern: heartbeatPattern,
       mean_hr: Math.round(mean_hr * 100) / 100,
       std_hr: Math.round(std_hr * 100) / 100,
       range_hr: Math.round(range_hr * 100) / 100
+    }
+  }
+
+  // Alternative authentication format (if first format fails)
+  const testAuthenticationAltFormat = async () => {
+    if (!biometricData || !user) return
+
+    console.log('🔄 Trying alternative authentication format...')
+    setIsProcessing(true)
+
+    try {
+      // Try the same format as enrollment data
+      const authData = {
+        user_id: user.email?.replace(/[@.]/g, '_') || 'unknown_user',
+        device_id: 'mobile_app',
+        heartbeat_pattern: biometricData.heartbeat_pattern,
+        mean_hr: biometricData.mean_hr,
+        std_hr: biometricData.std_hr,
+        range_hr: biometricData.range_hr,
+        confidence_threshold: 85.0
+      }
+
+      console.log('📤 Sending alternative auth data:', JSON.stringify(authData, null, 2))
+      const response = await fetch(`${BACKEND_URL}/api/presence/event`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(authData)
+      })
+
+      const result = await response.json()
+      console.log('🔍 Alternative auth response:', JSON.stringify(result, null, 2))
+
+      if (response.ok && result.identified_user) {
+        console.log('✅ Alternative authentication successful:', result)
+        Alert.alert(
+          'Authentication Test Successful!',
+          `🎯 Successfully identified as: ${result.identified_user}\n📊 Confidence: ${result.confidence}%\n⏱️ Response time: ${result.processing_time}ms`,
+          [
+            {
+              text: 'Perfect!',
+              onPress: () => navigation.goBack()
+            }
+          ]
+        )
+      } else {
+        console.log('❌ Alternative authentication also failed:', result)
+        Alert.alert(
+          'Authentication Still Failed',
+          'Both formats failed. The backend might expect different field names or values.'
+        )
+      }
+    } catch (error) {
+      console.error('❌ Alternative authentication test error:', error)
+      Alert.alert('Test Error', 'Could not test authentication with alternative format.')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
@@ -209,14 +267,20 @@ const BiometricEnrollmentScreen = () => {
     setIsProcessing(true)
 
     try {
+      // Match the format your backend expects for authentication
       const authData = {
         device_id: 'mobile_app',
-        heartbeat_pattern: biometricData.heartbeat_pattern,
-        mean_hr: biometricData.mean_hr,
-        std_hr: biometricData.std_hr,
-        range_hr: biometricData.range_hr
+        sensor_data: {
+          heartbeat_pattern: biometricData.heartbeat_pattern,
+          mean_hr: biometricData.mean_hr,
+          std_hr: biometricData.std_hr,
+          range_hr: biometricData.range_hr
+        },
+        timestamp: new Date().toISOString(),
+        location: location || 'mobile_app'
       }
 
+      console.log('📤 Sending authentication test data:', JSON.stringify(authData, null, 2))
       const response = await fetch(`${BACKEND_URL}/api/presence/event`, {
         method: 'POST',
         headers: {
@@ -226,6 +290,7 @@ const BiometricEnrollmentScreen = () => {
       })
 
       const result = await response.json()
+      console.log('🔍 Authentication response:', JSON.stringify(result, null, 2))
 
       if (response.ok && result.identified_user) {
         console.log('✅ Authentication successful:', result)
@@ -241,9 +306,29 @@ const BiometricEnrollmentScreen = () => {
         )
       } else {
         console.log('❌ Authentication failed:', result)
+        
+        // Show detailed validation errors if available
+        let errorMessage = result.error?.message || 'Could not identify user'
+        if (result.error?.details) {
+          console.log('📋 Validation details:', result.error.details)
+          errorMessage += '\n\nValidation errors:\n'
+          result.error.details.forEach((detail: any, index: number) => {
+            errorMessage += `${index + 1}. ${detail.msg || detail.message || JSON.stringify(detail)}\n`
+          })
+        }
+        
         Alert.alert(
           'Authentication Test Failed',
-          result.error || 'Could not identify user. This might be normal if confidence is too low.'
+          errorMessage,
+          [
+            {
+              text: 'Try Different Format',
+              onPress: testAuthenticationAltFormat
+            },
+            {
+              text: 'OK'
+            }
+          ]
         )
       }
     } catch (error) {
@@ -252,124 +337,7 @@ const BiometricEnrollmentScreen = () => {
     } finally {
       setIsProcessing(false)
     }
-  }
-
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Biometric Enrollment</Text>
-          <Text style={styles.subtitle}>Register your heartbeat pattern for secure authentication</Text>
-        </View>
-
-        {/* Personal Information Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Personal Information</Text>
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput
-              style={styles.textInput}
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Enter your full name"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Location</Text>
-            <TextInput
-              style={styles.textInput}
-              value={location}
-              onChangeText={setLocation}
-              placeholder="e.g., Living Room, Bedroom"
-              placeholderTextColor="#6B7280"
-            />
-          </View>
-        </View>
-
-        {/* Recording Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Heartbeat Recording</Text>
-          
-          {!isRecording && !biometricData && (
-            <View style={styles.recordingContainer}>
-              <Text style={styles.recordingInstructions}>
-                📱 Sit comfortably and remain still for 30 seconds while we record your heartbeat pattern.
-              </Text>
-              <TouchableOpacity
-                style={[styles.recordButton, (!fullName.trim() || !location.trim()) && styles.recordButtonDisabled]}
-                onPress={startRecording}
-                disabled={!fullName.trim() || !location.trim()}
-              >
-                <Text style={styles.recordButtonText}>🎙️ Start Recording</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {isRecording && (
-            <View style={styles.recordingContainer}>
-              <Animated.View style={[styles.recordingIndicator, { transform: [{ scale: pulseAnim }] }]}>
-                <Text style={styles.recordingIcon}>❤️</Text>
-              </Animated.View>
-              <Text style={styles.recordingText}>Recording heartbeat...</Text>
-              <Text style={styles.progressText}>{Math.round(recordingProgress)}% complete</Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${recordingProgress}%` }]} />
-              </View>
-              <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
-                <Text style={styles.stopButtonText}>Stop Recording</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {biometricData && !isRecording && (
-            <View style={styles.recordingContainer}>
-              <Text style={styles.recordingComplete}>✅ Recording Complete</Text>
-              <View style={styles.statsContainer}>
-                <Text style={styles.statsText}>📊 Samples: {biometricData.heartbeat_pattern.length}</Text>
-                <Text style={styles.statsText}>💓 Average HR: {biometricData.mean_hr} bpm</Text>
-                <Text style={styles.statsText}>📈 Std Dev: {biometricData.std_hr}</Text>
-                <Text style={styles.statsText}>📏 Range: {biometricData.range_hr} bpm</Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.enrollButton, isProcessing && styles.enrollButtonDisabled]}
-                onPress={enrollUser}
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.enrollButtonText}>Complete Enrollment</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.retryButton} onPress={() => {
-                setBiometricData(null)
-                setRecordingProgress(0)
-              }}>
-                <Text style={styles.retryButtonText}>🔄 Record Again</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-
-        {/* Info Section */}
-        <View style={styles.infoSection}>
-          <Text style={styles.infoTitle}>How it works</Text>
-          <Text style={styles.infoText}>
-            • Your heartbeat pattern is unique like a fingerprint{'\n'}
-            • We use advanced algorithms to identify you securely{'\n'}
-            • Data is processed locally and encrypted{'\n'}
-            • No biometric data is stored in the cloud
-          </Text>
-        </View>
-
-      </ScrollView>
-    </SafeAreaView>
-  )
-}
-
+    }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -555,4 +523,118 @@ const styles = StyleSheet.create({
   },
 })
 
-export default BiometricEnrollmentScreen
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Biometric Enrollment</Text>
+          <Text style={styles.subtitle}>Register your heartbeat pattern for secure authentication</Text>
+        </View>
+
+        {/* Personal Information Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Personal Information</Text>
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Full Name</Text>
+            <TextInput
+              style={styles.textInput}
+              value={fullName}
+              onChangeText={setFullName}
+              placeholder="Enter your full name"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Location</Text>
+            <TextInput
+              style={styles.textInput}
+              value={location}
+              onChangeText={setLocation}
+              placeholder="e.g., Living Room, Bedroom"
+              placeholderTextColor="#6B7280"
+            />
+          </View>
+        </View>
+
+        {/* Recording Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Heartbeat Recording</Text>
+          
+          {!isRecording && !biometricData && (
+            <View style={styles.recordingContainer}>
+              <Text style={styles.recordingInstructions}>
+                📱 Sit comfortably and remain still for 30 seconds while we record your heartbeat pattern.
+              </Text>
+              <TouchableOpacity
+                style={[styles.recordButton, (!fullName.trim() || !location.trim()) && styles.recordButtonDisabled]}
+                onPress={startRecording}
+                disabled={!fullName.trim() || !location.trim()}
+              >
+                <Text style={styles.recordButtonText}>🎙️ Start Recording</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {isRecording && (
+            <View style={styles.recordingContainer}>
+              <Animated.View style={[styles.recordingIndicator, { transform: [{ scale: pulseAnim }] }]}>
+                <Text style={styles.recordingIcon}>❤️</Text>
+              </Animated.View>
+              <Text style={styles.recordingText}>Recording heartbeat...</Text>
+              <Text style={styles.progressText}>{Math.round(recordingProgress)}% complete</Text>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${recordingProgress}%` }]} />
+              </View>
+              <TouchableOpacity style={styles.stopButton} onPress={stopRecording}>
+                <Text style={styles.stopButtonText}>Stop Recording</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {biometricData && !isRecording && (
+            <View style={styles.recordingContainer}>
+              <Text style={styles.recordingComplete}>✅ Recording Complete</Text>
+              <View style={styles.statsContainer}>
+                <Text style={styles.statsText}>📊 Samples: {biometricData.heartbeat_pattern.length}</Text>
+                <Text style={styles.statsText}>💓 Average HR: {biometricData.mean_hr} bpm</Text>
+                <Text style={styles.statsText}>📈 Std Dev: {biometricData.std_hr}</Text>
+                <Text style={styles.statsText}>📏 Range: {biometricData.range_hr} bpm</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.enrollButton, isProcessing && styles.enrollButtonDisabled]}
+                onPress={enrollUser}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.enrollButtonText}>Complete Enrollment</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.retryButton} onPress={() => {
+                setBiometricData(null)
+                setRecordingProgress(0)
+              }}>
+                <Text style={styles.retryButtonText}>🔄 Record Again</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* Info Section */}
+        <View style={styles.infoSection}>
+          <Text style={styles.infoTitle}>How it works</Text>
+          <Text style={styles.infoText}>
+            • Your heartbeat pattern is unique like a fingerprint{'\n'}
+            • We use advanced algorithms to identify you securely{'\n'}
+            • Data is processed locally and encrypted{'\n'}
+            • No biometric data is stored in the cloud
+          </Text>
+        </View>
+
+      </ScrollView>
+      </SafeAreaView>
+    )
+  }
