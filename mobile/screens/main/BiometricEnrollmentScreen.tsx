@@ -41,7 +41,7 @@ const BiometricEnrollmentScreen = () => {
   const [pulseAnim] = useState(new Animated.Value(1))
   
   // Your FastAPI backend URL (update this to match your setup)
-  const BACKEND_URL = 'https://obscure-dollop-r4xgv6j6wjvgfp7rp-8000.app.github.dev'
+  const BACKEND_URL = 'http://192.168.1.135:8000'
 
   // Simulate heartbeat recording (replace with real MR60BHA2 data later)
   const simulateHeartbeatRecording = async (): Promise<BiometricData> => {

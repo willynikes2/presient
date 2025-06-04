@@ -15,7 +15,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useNavigation } from '@react-navigation/native'
 
 // Backend URL
-const BACKEND_URL = 'https://obscure-dollop-r4xgv6j6wjvgfp7rp-8000.app.github.dev'
+const BACKEND_URL = 'http://192.168.1.135:8000'
 
 interface EnrolledUser {
   id: string
