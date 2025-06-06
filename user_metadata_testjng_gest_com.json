@@ -1,0 +1,10 @@
+{
+  "user_id": "testjng_gest_com",
+  "display_name": "Testy tester",
+  "location": "Test area",
+  "enrolled_at": "2025-06-05T09:37:26.052982",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}

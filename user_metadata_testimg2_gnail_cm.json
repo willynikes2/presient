@@ -1,0 +1,10 @@
+{
+  "user_id": "testimg2_gnail_cm",
+  "display_name": "Tester2",
+  "location": "Test area",
+  "enrolled_at": "2025-06-05T10:02:27.492310",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}

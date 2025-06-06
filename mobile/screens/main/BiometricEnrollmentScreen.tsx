@@ -1,6 +1,7 @@
 // File: mobile/screens/main/BiometricEnrollmentScreen.tsx
 // Real biometric enrollment that connects to your FastAPI backend
-import React, { useState, useEffect } from 'react'
+import * as React from 'react'
+import { useState, useEffect } from 'react'
 import {
   View,
   Text,
@@ -41,7 +42,7 @@ const BiometricEnrollmentScreen = () => {
   const [pulseAnim] = useState(new Animated.Value(1))
   
   // Your FastAPI backend URL (update this to match your setup)
-  const BACKEND_URL = 'https://obscure-dollop-r4xgv6j6wjvgfp7rp-8000.app.github.dev'
+  const BACKEND_URL = 'http://192.168.1.135:8000'
 
   // Simulate heartbeat recording (replace with real MR60BHA2 data later)
   const simulateHeartbeatRecording = async (): Promise<BiometricData> => {
@@ -209,17 +210,15 @@ const BiometricEnrollmentScreen = () => {
     setIsProcessing(true)
 
     try {
-      // Format 1: Nested sensor_data structure
+      // Format 1: Nested sensor_data structure - FIXED to send correct fields
       const authData = {
         user_id: user.email?.replace(/[@.]/g, '_') || 'unknown_user',
         sensor_id: 'mobile_app_sensor',
         confidence: 0.85,
         device_id: 'mobile_app',
         sensor_data: {
-          heartbeat_pattern: biometricData.heartbeat_pattern,
-          mean_hr: biometricData.mean_hr,
-          std_hr: biometricData.std_hr,
-          range_hr: biometricData.range_hr
+          heart_rate: biometricData.mean_hr,        // ✅ Fixed: Backend expects heart_rate
+          breathing_rate: 16                        // ✅ Fixed: Add optional breathing rate
         },
         timestamp: new Date().toISOString(),
         location: location || 'mobile_app'
@@ -237,11 +236,11 @@ const BiometricEnrollmentScreen = () => {
       const result = await response.json()
       console.log('🔍 Authentication response (Format 1):', JSON.stringify(result, null, 2))
 
-      if (response.ok && result.identified_user) {
+      if (response.ok && result.biometric_authentication?.authenticated) {
         console.log('✅ Authentication successful:', result)
         Alert.alert(
           'Authentication Test Successful!',
-          `🎯 Successfully identified as: ${result.identified_user}\n📊 Confidence: ${result.confidence}%\n⏱️ Response time: ${result.processing_time}ms`,
+          `🎯 Successfully identified as: ${result.biometric_authentication.matched_user_id}\n📊 Confidence: ${(result.biometric_authentication.confidence * 100).toFixed(1)}%\n✅ Status: ${result.biometric_authentication.status}`,
           [
             {
               text: 'Perfect!',
@@ -253,7 +252,7 @@ const BiometricEnrollmentScreen = () => {
         console.log('❌ Authentication failed (Format 1):', result)
         
         // Show detailed validation errors if available
-        let errorMessage = result.error?.message || 'Could not identify user'
+        let errorMessage = result.biometric_authentication?.message || result.error?.message || 'Could not identify user'
         if (result.error?.details) {
           console.log('📋 Validation details:', result.error.details)
           errorMessage += '\n\nValidation errors:\n'
@@ -292,16 +291,14 @@ const BiometricEnrollmentScreen = () => {
     setIsProcessing(true)
 
     try {
-      // Format 2: Flattened structure (all fields at top level)
+      // Format 2: Flattened structure - FIXED to send correct fields
       const authData = {
         user_id: user.email?.replace(/[@.]/g, '_') || 'unknown_user',
         sensor_id: 'mobile_app_sensor',
         confidence: 0.85,
         device_id: 'mobile_app',
-        heartbeat_pattern: biometricData.heartbeat_pattern,
-        mean_hr: biometricData.mean_hr,
-        std_hr: biometricData.std_hr,
-        range_hr: biometricData.range_hr,
+        heart_rate: biometricData.mean_hr,          // ✅ Fixed: Backend expects heart_rate
+        breathing_rate: 16,                         // ✅ Fixed: Add optional breathing rate
         timestamp: new Date().toISOString(),
         location: location || 'mobile_app'
       }
@@ -318,11 +315,11 @@ const BiometricEnrollmentScreen = () => {
       const result = await response.json()
       console.log('🔍 Authentication response (Format 2):', JSON.stringify(result, null, 2))
 
-      if (response.ok && result.identified_user) {
+      if (response.ok && result.biometric_authentication?.authenticated) {
         console.log('✅ Authentication successful (Format 2):', result)
         Alert.alert(
           'Authentication Test Successful!',
-          `🎯 Successfully identified as: ${result.identified_user}\n📊 Confidence: ${result.confidence}%\n⏱️ Response time: ${result.processing_time}ms`,
+          `🎯 Successfully identified as: ${result.biometric_authentication.matched_user_id}\n📊 Confidence: ${(result.biometric_authentication.confidence * 100).toFixed(1)}%\n✅ Status: ${result.biometric_authentication.status}`,
           [
             {
               text: 'Perfect!',
@@ -334,7 +331,7 @@ const BiometricEnrollmentScreen = () => {
         console.log('❌ Authentication failed (Format 2):', result)
         
         // Show detailed validation errors if available
-        let errorMessage = result.error?.message || 'Could not identify user'
+        let errorMessage = result.biometric_authentication?.message || result.error?.message || 'Could not identify user'
         if (result.error?.details) {
           console.log('📋 Validation details (Format 2):', result.error.details)
           errorMessage += '\n\nValidation errors:\n'

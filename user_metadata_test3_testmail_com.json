@@ -1,0 +1,10 @@
+{
+  "user_id": "test3_testmail_com",
+  "display_name": "Test 3",
+  "location": "Test area ",
+  "enrolled_at": "2025-06-05T10:09:27.833219",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}
