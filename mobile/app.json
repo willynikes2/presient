@@ -6,11 +6,8 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "presient",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "notifications": {
-      "icon": "./assets/notification-icon.png",
       "color": "#007AFF",
       "sounds": ["default"],
       "iosDisplayInForeground": true
@@ -38,10 +35,7 @@
     "plugins": [
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications",
-      "expo-device",
-      "expo-haptics",
-      "expo-av"
+      "expo-notifications"
     ]
   }
 }

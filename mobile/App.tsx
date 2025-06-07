@@ -1,4 +1,4 @@
-// Patched App.tsx - BiometricEnrollmentScreen Connected
+// Enhanced App.tsx - Ring-Style Notifications + Apple Watch Integration
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native'
@@ -8,10 +8,20 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 // Auth Context
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
+// New Contexts for Ring-Style Features
+import { NotificationProvider } from './contexts/NotificationContext'
+import { WearableProvider } from './contexts/WearableContext'
+
 // Screens
 import HybridLoginScreen from './screens/auth/HybridLoginScreen'
 import DashboardScreen from './screens/main/DashboardScreen'
 import BiometricEnrollmentScreen from './screens/main/BiometricEnrollmentScreen'
+
+// New Screens for Ring-Style Features
+import WearableSetupScreen from './screens/main/WearableSetupScreen'
+import SensorDetailScreen from './screens/main/SensorDetailScreen'
+import AutomationSettingsScreen from './screens/main/AutomationSettingsScreen'
+import NotificationTestScreen from './screens/main/NotificationTestScreen'
 
 // Simple placeholder screens (for buttons that aren't implemented yet)
 const ProfileScreen = () => {
@@ -74,13 +84,17 @@ const styles = require('react-native').StyleSheet.create({
   },
 })
 
-// Navigation Types
+// Enhanced Navigation Types
 export type RootStackParamList = {
   HybridLogin: undefined
   Dashboard: undefined
   Profile: undefined
   DeviceManagement: undefined
   BiometricEnrollment: undefined
+  WearableSetup: undefined
+  SensorDetail: { sensor: string; person?: string; confidence?: number }
+  AutomationSettings: undefined
+  NotificationTest: undefined
   FirmwareUpdate: undefined
   SensorDiscovery: undefined
 }
@@ -146,6 +160,26 @@ const MainNavigator = () => (
       options={{ title: 'Enroll Biometrics' }}
     />
     <Stack.Screen 
+      name="WearableSetup" 
+      component={WearableSetupScreen}
+      options={{ title: 'Apple Watch Setup' }}
+    />
+    <Stack.Screen 
+      name="SensorDetail" 
+      component={SensorDetailScreen}
+      options={{ title: 'Sensor Activity' }}
+    />
+    <Stack.Screen 
+      name="AutomationSettings" 
+      component={AutomationSettingsScreen}
+      options={{ title: 'Automation Settings' }}
+    />
+    <Stack.Screen 
+      name="NotificationTest" 
+      component={NotificationTestScreen}
+      options={{ title: 'Test Notifications' }}
+    />
+    <Stack.Screen 
       name="FirmwareUpdate" 
       component={FirmwareUpdateScreen}
       options={{ title: 'Firmware Update' }}
@@ -183,7 +217,7 @@ const loadingStyles = require('react-native').StyleSheet.create({
   },
 })
 
-// Root App Component
+// Root App Component with Enhanced Context Providers
 const AppContent = () => {
   const { user, loading } = useAuth()
 
@@ -198,13 +232,17 @@ const AppContent = () => {
   )
 }
 
-// Main App Component
+// Main App Component with Ring-Style Providers
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AppContent />
-        <StatusBar style="light" />
+        <NotificationProvider>
+          <WearableProvider>
+            <AppContent />
+            <StatusBar style="light" />
+          </WearableProvider>
+        </NotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>
   )

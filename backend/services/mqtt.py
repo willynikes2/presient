@@ -20,8 +20,9 @@ class MQTTPublisher:
     def __init__(self):
         self.broker_host = os.getenv("MQTT_BROKER_HOST", "192.168.1.102")
         self.broker_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
-        self.username = os.getenv("MQTT_USERNAME")
-        self.password = os.getenv("MQTT_PASSWORD")
+        # ✅ Fixed: Added default values for username/password
+        self.username = os.getenv("MQTT_USERNAME", "presient")
+        self.password = os.getenv("MQTT_PASSWORD", "presient123")
         self.client_id = os.getenv("MQTT_CLIENT_ID", "presient-api")
         
         # Topic configuration
@@ -36,8 +37,9 @@ class MQTTPublisher:
         # Initialize client if enabled
         if self.enabled:
             try:
+                # ✅ Fixed: Correct syntax for paho-mqtt 2.1.0
                 self.client = mqtt.Client(
-                    mqtt.CallbackAPIVersion.VERSION2,
+                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
                     client_id=self.client_id
                 )
                 self.client.on_connect = self._on_connect
@@ -45,6 +47,7 @@ class MQTTPublisher:
                 
                 if self.username and self.password:
                     self.client.username_pw_set(self.username, self.password)
+                    logger.info(f"🔐 MQTT credentials configured for user: {self.username}")
                     
             except Exception as e:
                 logger.error(f"Failed to create MQTT client: {e}")
@@ -57,7 +60,15 @@ class MQTTPublisher:
             logger.info(f"🔗 Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
         else:
             self.connected = False
-            logger.error(f"❌ Failed to connect to MQTT broker, return code {rc}")
+            error_messages = {
+                1: "Connection refused - incorrect protocol version",
+                2: "Connection refused - invalid client identifier", 
+                3: "Connection refused - server unavailable",
+                4: "Connection refused - bad username or password",
+                5: "Connection refused - not authorised"
+            }
+            error_msg = error_messages.get(rc, f"Unknown error code {rc}")
+            logger.error(f"❌ Failed to connect to MQTT broker, return code {rc}: {error_msg}")
     
     def _on_disconnect(self, client, userdata, rc, properties=None, flags=None):
         """Callback for when client disconnects"""
@@ -71,6 +82,7 @@ class MQTTPublisher:
             return False
         
         try:
+            logger.info(f"🔄 Attempting MQTT connection to {self.broker_host}:{self.broker_port}")
             # Connect in a non-blocking way
             self.client.connect_async(self.broker_host, self.broker_port, 60)
             self.client.loop_start()
@@ -167,8 +179,7 @@ class MQTTPublisher:
             
             # NVIDIA Shield specific trigger for certain users
             shield_users = ["capitalisandme_gmail_com", "testimg2_gnail_cm", "jane_smith"]
-  # Your user IDs
-            if event.user_id in shield_users and event.confidence > 0.85:
+            if event.user_id in shield_users and event.confidence > 0.80:  # Lowered threshold to 0.80
                 shield_data = {
                     "action": "turn_on_shield",
                     "user": event.user_id,
@@ -315,7 +326,7 @@ class MQTTPublisher:
             "broker_port": self.broker_port,
             "client_id": self.client_id,
             "base_topic": self.base_topic,
-            "has_auth": bool(self.username)
+            "has_auth": bool(self.username and self.password)
         }
     
     def get_uptime(self) -> Optional[float]:
