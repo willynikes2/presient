@@ -1,6 +1,4 @@
-﻿# Create working app.json without missing assets
-@"
-{
+﻿{
   "expo": {
     "name": "Presient",
     "slug": "presient",
@@ -27,6 +25,3 @@
     ]
   }
 }
-"@ | Out-File -FilePath "app.json" -Encoding UTF8
-
-Write-Host "✅ Fixed app.json (removed missing asset references)"

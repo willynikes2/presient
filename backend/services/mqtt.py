@@ -18,7 +18,7 @@ class MQTTPublisher:
     """MQTT Publisher service using paho-mqtt"""
     
     def __init__(self):
-        self.broker_host = os.getenv("MQTT_BROKER_HOST", "localhost")
+        self.broker_host = os.getenv("MQTT_BROKER_HOST", "192.168.1.102")
         self.broker_port = int(os.getenv("MQTT_BROKER_PORT", "1883"))
         self.username = os.getenv("MQTT_USERNAME")
         self.password = os.getenv("MQTT_PASSWORD")
@@ -54,15 +54,15 @@ class MQTTPublisher:
         """Callback for when client connects"""
         if rc == 0:
             self.connected = True
-            logger.info(f"Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
+            logger.info(f"🔗 Connected to MQTT broker at {self.broker_host}:{self.broker_port}")
         else:
             self.connected = False
-            logger.error(f"Failed to connect to MQTT broker, return code {rc}")
+            logger.error(f"❌ Failed to connect to MQTT broker, return code {rc}")
     
     def _on_disconnect(self, client, userdata, rc, properties=None, flags=None):
         """Callback for when client disconnects"""
         self.connected = False
-        logger.info("Disconnected from MQTT broker")
+        logger.info("🔌 Disconnected from MQTT broker")
     
     async def connect(self) -> bool:
         """Connect to MQTT broker"""
@@ -86,7 +86,7 @@ class MQTTPublisher:
             return False
             
         except Exception as e:
-            logger.error(f"Failed to connect to MQTT broker: {e}")
+            logger.error(f"❌ Failed to connect to MQTT broker: {e}")
             self.connected = False
             return False
     
@@ -112,45 +112,80 @@ class MQTTPublisher:
         try:
             result = self.client.publish(topic, payload, retain=retain)
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                logger.debug(f"Published to {topic}")
+                logger.debug(f"📤 Published to {topic}")
             else:
-                logger.error(f"Failed to publish to {topic}, rc={result.rc}")
+                logger.error(f"❌ Failed to publish to {topic}, rc={result.rc}")
                 
         except Exception as e:
-            logger.error(f"Error publishing to MQTT topic {topic}: {e}")
+            logger.error(f"❌ Error publishing to MQTT topic {topic}: {e}")
     
     async def publish_presence_event(self, event: PresenceEvent, profile: Optional[Profile] = None):
-        """Publish a presence detection event to MQTT"""
+        """Publish a presence detection event to MQTT for Home Assistant"""
         if not self.connected:
             logger.debug("MQTT not connected, skipping presence event publication")
             return
         
         try:
+            # Home Assistant compatible format
             event_data = {
-                "event_id": str(event.id),
+                "person": event.user_id,  # Display name
                 "user_id": event.user_id,
-                "sensor_id": event.sensor_id,
                 "confidence": event.confidence,
-                "timestamp": event.timestamp.isoformat() if event.timestamp else None,
-                "detected": event.confidence > 0.7
+                "location": "entrance",  # Default location
+                "timestamp": event.timestamp.isoformat() if event.timestamp else datetime.now().isoformat(),
+                "heart_rate": getattr(event, 'heart_rate', None),
+                "breathing_rate": getattr(event, 'breathing_rate', 16),
+                "device_id": "presient_sensor_01",
+                "event_type": "person_detected"
             }
             
+            # Add profile info if available
             if profile:
-                event_data["profile"] = {
-                    "name": profile.name,
-                    "profile_id": str(profile.id)
-                }
+                event_data["person"] = profile.name  # Use actual name instead of user_id
+                event_data["profile_id"] = str(profile.id)
             
+            # Publish to Home Assistant topic (what the automation expects)
+            await self.publish(
+                "presient/person_detected",  # Home Assistant automation topic
+                json.dumps(event_data),
+                retain=True  # Retain for Home Assistant
+            )
+            
+            # Also publish to original topic for compatibility
             await self.publish(
                 f"{self.base_topic}/events/presence",
-                json.dumps(event_data),
+                json.dumps({
+                    "event_id": str(event.id),
+                    "user_id": event.user_id,
+                    "sensor_id": event.sensor_id,
+                    "confidence": event.confidence,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "detected": event.confidence > 0.7
+                }),
                 retain=False
             )
             
-            logger.info(f"Published presence event {event.id} to MQTT")
+            # NVIDIA Shield specific trigger for certain users
+            shield_users = ["capitalisandme_gmail_com", "testimg2_gnail_cm", "jane_smith"]
+  # Your user IDs
+            if event.user_id in shield_users and event.confidence > 0.85:
+                shield_data = {
+                    "action": "turn_on_shield",
+                    "user": event.user_id,
+                    "confidence": event.confidence,
+                    "timestamp": datetime.now().isoformat()
+                }
+                await self.publish(
+                    "presient/nvidia_shield/turn_on",
+                    json.dumps(shield_data),
+                    retain=False
+                )
+                logger.info(f"🎮 NVIDIA Shield trigger published for {event.user_id}")
+            
+            logger.info(f"📤 Published presence event {event.id} to MQTT (HA compatible)")
             
         except Exception as e:
-            logger.error(f"Error publishing presence event to MQTT: {e}")
+            logger.error(f"❌ Error publishing presence event to MQTT: {e}")
     
     async def publish_status(self, status: str):
         """Publish system status"""
@@ -227,6 +262,62 @@ class MQTTPublisher:
         except Exception as e:
             logger.error(f"Error publishing user status: {e}")
     
+    async def publish_light_command(self, color: str, user_id: Optional[str] = None, duration: int = 3) -> bool:
+        """Publish light control command to ESP32"""
+        if not self.connected:
+            logger.debug("MQTT not connected, skipping light command")
+            return False
+        
+        try:
+            # Color command mapping
+            color_commands = {
+                "off": {"state": "OFF"},
+                "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
+                "green": {"state": "ON", "color": {"r": 0, "g": 255, "b": 0}},
+                "yellow": {"state": "ON", "color": {"r": 255, "g": 255, "b": 0}},
+                "purple": {"state": "ON", "color": {"r": 128, "g": 0, "b": 255}},
+                "red": {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
+            }
+            
+            command = color_commands.get(color, color_commands["blue"])
+            
+            # Enhanced command with metadata
+            enhanced_command = {
+                **command,
+                "user_id": user_id,
+                "duration": duration,
+                "timestamp": datetime.utcnow().isoformat(),
+                "source": "presient_auth"
+            }
+            
+            # Publish to ESP32 light topic
+            topic = f"{self.base_topic}/princeton/light/status_light/command"
+            
+            await self.publish(
+                topic,
+                json.dumps(enhanced_command),
+                retain=False
+            )
+            
+            logger.info(f"Published {color} light command for user {user_id} to {topic}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error publishing light command: {e}")
+            return False
+
+    def get_mqtt_status(self) -> Dict[str, Any]:
+        """Get comprehensive MQTT status"""
+        return {
+            "enabled": self.enabled,
+            "connected": self.connected,
+            "broker_host": self.broker_host,
+            "broker_port": self.broker_port,
+            "client_id": self.client_id,
+            "base_topic": self.base_topic,
+            "has_auth": bool(self.username)
+        }
+    
     def get_uptime(self) -> Optional[float]:
         """Get connection uptime in seconds"""
         # This is a placeholder - would need to track connection time
@@ -242,72 +333,15 @@ async def initialize_mqtt():
     if mqtt_publisher.enabled:
         success = await mqtt_publisher.connect()
         if success:
-            logger.info("MQTT publisher initialized successfully")
+            logger.info("✅ MQTT publisher initialized successfully")
         else:
-            logger.warning("MQTT publisher failed to initialize")
+            logger.warning("⚠️ MQTT publisher failed to initialize")
     else:
-        logger.info("MQTT publisher is disabled")
+        logger.info("ℹ️ MQTT publisher is disabled")
 
 
 async def shutdown_mqtt():
     """Cleanup MQTT connection during app shutdown"""
     if mqtt_publisher.connected:
         await mqtt_publisher.disconnect()
-        logger.info("MQTT publisher shutdown complete")
-# Add these methods to your existing MQTTPublisher class in mqtt.py
-
-async def publish_light_command(self, color: str, user_id: Optional[str] = None, duration: int = 3) -> bool:
-    """Publish light control command to ESP32"""
-    if not self.connected:
-        logger.debug("MQTT not connected, skipping light command")
-        return False
-    
-    try:
-        # Color command mapping
-        color_commands = {
-            "off": {"state": "OFF"},
-            "blue": {"state": "ON", "color": {"r": 0, "g": 50, "b": 255}},
-            "green": {"state": "ON", "color": {"r": 0, "g": 255, "b": 0}},
-            "yellow": {"state": "ON", "color": {"r": 255, "g": 255, "b": 0}},
-            "purple": {"state": "ON", "color": {"r": 128, "g": 0, "b": 255}},
-            "red": {"state": "ON", "color": {"r": 255, "g": 0, "b": 0}}
-        }
-        
-        command = color_commands.get(color, color_commands["blue"])
-        
-        # Enhanced command with metadata
-        enhanced_command = {
-            **command,
-            "user_id": user_id,
-            "duration": duration,
-            "timestamp": datetime.utcnow().isoformat(),
-            "source": "presient_auth"
-        }
-        
-        # Publish to ESP32 light topic
-        topic = f"{self.base_topic}/princeton/light/status_light/command"
-        
-        await self.publish(
-            topic,
-            json.dumps(enhanced_command),
-            retain=False
-        )
-        
-        logger.info(f"Published {color} light command for user {user_id} to {topic}")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error publishing light command: {e}")
-        return False
-
-def get_mqtt_status(self) -> Dict[str, Any]:
-    """Get comprehensive MQTT status"""
-    return {
-        "enabled": self.enabled,
-        "connected": self.connected,
-        "broker_host": self.broker_host,
-        "broker_port": self.broker_port,
-        "client_id": self.client_id,
-        "base_topic": self.base_topic,
-        "has_auth": bool(self.username)
-    }
+        logger.info("🔌 MQTT publisher shutdown complete")

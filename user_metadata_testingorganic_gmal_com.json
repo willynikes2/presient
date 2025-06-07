@@ -1,0 +1,10 @@
+{
+  "user_id": "testingorganic_gmal_com",
+  "display_name": "Tester 5",
+  "location": " Test area ",
+  "enrolled_at": "2025-06-06T17:39:49.562241",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}
