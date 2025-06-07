@@ -9,19 +9,39 @@
     "assetBundlePatterns": [
       "**/*"
     ],
+    "notifications": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#007AFF",
+      "sounds": ["default"],
+      "iosDisplayInForeground": true
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.presient"
+      "bundleIdentifier": "com.yourname.presient",
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Presient uses Health data for biometric authentication and heart rate monitoring",
+        "NSHealthUpdateUsageDescription": "Presient stores biometric patterns for secure authentication"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
-      "package": "com.yourname.presient"
+      "package": "com.yourname.presient",
+      "useNextNotificationsApi": true,
+      "permissions": [
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.WAKE_LOCK"
+      ]
     },
     "plugins": [
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-notifications",
+      "expo-device",
+      "expo-haptics",
+      "expo-av"
     ]
   }
 }
