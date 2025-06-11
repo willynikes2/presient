@@ -1,0 +1,10 @@
+{
+  "john_doe": {
+    "user_id": "john_doe",
+    "enable_home_assistant": true,
+    "enable_push_notifications": true,
+    "enable_app_routines": false,
+    "app_routine_type": "notification_only",
+    "updated_at": "2025-06-11T16:37:47.512347+00:00"
+  }
+}

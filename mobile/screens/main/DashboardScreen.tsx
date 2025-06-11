@@ -1,4 +1,4 @@
-// Syntax Fixed DashboardScreen - mobile/screens/main/DashboardScreen.tsx
+// Patched DashboardScreen - mobile/screens/main/DashboardScreen.tsx
 import React, { useState, useEffect } from 'react'
 import {
   View,
@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { useAuth } from '../../contexts/AuthContext'
 import { useNavigation } from '@react-navigation/native'
+import axios from 'axios' // <-- ADDED AXIOS IMPORT
 
 // Backend URL
 const BACKEND_URL = 'http://192.168.1.135:8000'
@@ -59,18 +60,26 @@ const DashboardScreen = () => {
     return 'User'
   }
 
-  // Fetch enrolled users from backend
+  // PATCHED: Fetch enrolled users from backend with axios
   const fetchEnrolledUsers = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/api/biometric/enrolled-users`)
-      const data = await response.json()
+      console.log('🔄 Fetching enrolled users with axios...');
       
-      if (response.ok) {
-        setEnrolledUsers(data.enrolled_users || [])
-        console.log('✅ Fetched enrolled users:', data.enrolled_users?.length || 0)
-      }
+      const response = await axios.get(`${BACKEND_URL}/api/biometric/enrolled-users`, {
+        timeout: 15000, // 15 seconds
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+      
+      console.log('✅ Axios success! Fetched users:', response.data.count);
+      setEnrolledUsers(response.data.enrolled_users || []);
+      
     } catch (error) {
-      console.error('❌ Failed to fetch enrolled users:', error)
+      console.error('❌ Axios error:', error.message);
+      if (error.code === 'ECONNABORTED') {
+        console.error('❌ Request timed out after 15 seconds');
+      }
     }
   }
 
@@ -213,7 +222,7 @@ const DashboardScreen = () => {
             style={[styles.actionCard, styles.primaryAction]}
             onPress={() => {
               console.log('🔄 Navigating to BiometricEnrollment...')
-              navigation.navigate('BiometricEnrollment' as never)
+              navigation.navigate('BiometricEnrollment')
             }}
           >
             <Text style={styles.actionIcon}>❤️</Text>
@@ -229,7 +238,7 @@ const DashboardScreen = () => {
             style={styles.actionCard}
             onPress={() => {
               console.log('🔄 Navigating to WearableSetup...')
-              navigation.navigate('WearableSetup' as never)
+              navigation.navigate('WearableSetup')
             }}
           >
             <Text style={styles.actionIcon}>⌚</Text>
@@ -244,7 +253,7 @@ const DashboardScreen = () => {
             style={styles.actionCard}
             onPress={() => {
               console.log('🔄 Navigating to AutomationSettings...')
-              navigation.navigate('AutomationSettings' as never)
+              navigation.navigate('AutomationSettings')
             }}
           >
             <Text style={styles.actionIcon}>⚙️</Text>

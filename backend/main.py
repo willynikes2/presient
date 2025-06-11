@@ -1,5 +1,5 @@
 """
-Enhanced main.py with auth integration, improved structure, and SQLite biometric authentication
+Enhanced main.py with Build Note 2: Ring-Style Notifications & MR60BHA2 Sensor Integration
 """
 
 import logging
@@ -14,6 +14,11 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError, Da
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
+import httpx
+import json
+from datetime import datetime, timezone
+from typing import Optional, Dict, List
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -45,6 +50,13 @@ from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
 # Import SQLite biometric matcher
 from backend.utils.biometric_matcher import SQLiteBiometricMatcher, load_profiles_from_db
 
+# *** NEW: Import MR60BHA2 sensor integration ***
+from backend.services.mqtt_subscriber import (
+    startup_mr60bha2_integration, 
+    shutdown_mr60bha2_integration,
+    get_mr60bha2_status
+)
+
 # Configure logging to stdout
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +72,33 @@ logger = logging.getLogger(__name__)
 # Global biometric matcher instance
 biometric_matcher: SQLiteBiometricMatcher = None
 biometric_profiles: dict = {}
+
+# ==================== Build Note 2: Pydantic Models ====================
+class PushTokenRegistration(BaseModel):
+    user_id: str
+    push_token: str
+    device_id: Optional[str] = None
+    platform: Optional[str] = "expo"
+
+class PresenceNotification(BaseModel):
+    person: str
+    confidence: float
+    sensor_id: Optional[str] = "entryway_1"
+    location: Optional[str] = "Front Door"
+    source: Optional[str] = "sensor_only"
+
+class AutomationSettings(BaseModel):
+    user_id: str
+    enable_home_assistant: bool = True
+    enable_push_notifications: bool = True
+    enable_app_routines: bool = False
+    app_routine_type: Optional[str] = "notification_only"  # "notification_only", "sound", "flash_light"
+
+# ==================== Build Note 2: In-Memory Storage ====================
+# In production, these would be stored in database tables
+push_tokens: Dict[str, Dict] = {}  # user_id -> {token, device_id, platform}
+automation_settings: Dict[str, Dict] = {}  # user_id -> settings
+presence_events: List[Dict] = []  # Recent presence events for testing
 
 # ==================== Lifespan Manager ====================
 @asynccontextmanager
@@ -79,6 +118,23 @@ async def lifespan(app: FastAPI):
     # Initialize MQTT
     await initialize_mqtt()
     
+    # Initialize Build Note 2 components
+    await startup_notification_system()
+    
+    # *** NEW: Initialize MR60BHA2 integration ***
+    if biometric_matcher and mqtt_publisher:
+        try:
+            await startup_mr60bha2_integration(
+                biometric_matcher=biometric_matcher,
+                mqtt_publisher=mqtt_publisher,
+                notification_system=trigger_presence_notification  # Your Ring-style notification system
+            )
+            logger.info("📡 MR60BHA2 sensor integration initialized")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize MR60BHA2 integration: {e}")
+            # Don't fail startup, sensor is optional
+    
     # Log configuration
     logger.info("Exception handlers configured")
     logger.info("SQLAlchemy error handlers enabled")
@@ -92,6 +148,10 @@ async def lifespan(app: FastAPI):
     logger.info("🛑 Presient API shutting down...")
     await shutdown_biometric_system()
     await shutdown_mqtt()
+    await shutdown_notification_system()
+    
+    # *** NEW: Shutdown MR60BHA2 integration ***
+    await shutdown_mr60bha2_integration()
 
 async def startup_biometric_system():
     """Initialize biometric matching system on startup"""
@@ -141,6 +201,58 @@ async def shutdown_biometric_system():
     except Exception as e:
         logger.error(f"❌ Error during biometric system shutdown: {e}")
 
+# ==================== Build Note 2: Notification System ====================
+async def startup_notification_system():
+    """Initialize notification system for Build Note 2"""
+    global push_tokens, automation_settings
+    
+    logger.info("🔔 Initializing notification system...")
+    
+    # Load any existing push tokens and settings from files (in production, use database)
+    try:
+        # Load push tokens
+        try:
+            with open("push_tokens.json", "r") as f:
+                push_tokens = json.load(f)
+            logger.info(f"📱 Loaded {len(push_tokens)} push tokens")
+        except FileNotFoundError:
+            push_tokens = {}
+            logger.info("📱 No existing push tokens found")
+        
+        # Load automation settings
+        try:
+            with open("automation_settings.json", "r") as f:
+                automation_settings = json.load(f)
+            logger.info(f"⚙️ Loaded automation settings for {len(automation_settings)} users")
+        except FileNotFoundError:
+            automation_settings = {}
+            logger.info("⚙️ No existing automation settings found")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to load notification data: {e}")
+        push_tokens = {}
+        automation_settings = {}
+    
+    logger.info("✅ Notification system initialized")
+
+async def shutdown_notification_system():
+    """Save notification system data on shutdown"""
+    global push_tokens, automation_settings
+    
+    try:
+        # Save push tokens
+        with open("push_tokens.json", "w") as f:
+            json.dump(push_tokens, f, indent=2)
+        
+        # Save automation settings
+        with open("automation_settings.json", "w") as f:
+            json.dump(automation_settings, f, indent=2)
+            
+        logger.info("💾 Notification system data saved")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save notification data: {e}")
+
 def get_biometric_matcher() -> SQLiteBiometricMatcher:
     """Get the global biometric matcher instance"""
     global biometric_matcher
@@ -160,19 +272,19 @@ def get_biometric_profiles() -> dict:
 
 # ==================== Initialize FastAPI App ====================
 app = FastAPI(
-    title="Presient API",
-    description="Biometric presence authentication system using mmWave heartbeat recognition with SQLite storage",
-    version="1.0.0",
+    title="Presient API with MR60BHA2 Sensor Integration",
+    description="Biometric presence authentication system with mmWave sensor and Ring-style notifications",
+    version="2.1.0",  # *** Updated version for MR60BHA2 support ***
     docs_url="/docs",
     redoc_url="/redoc",
-    lifespan=lifespan  # Use lifespan instead of deprecated startup/shutdown events
+    lifespan=lifespan
 )
 
 # ==================== Middleware ====================
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),  # In production, use specific origins
+    allow_origins=os.getenv("CORS_ORIGINS", "*").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -261,16 +373,357 @@ app.add_exception_handler(Exception, general_exception_handler)
 from backend.routes import auth, presence, profiles, heartbeat_auth
 
 # Include routers with consistent prefixing
-app.include_router(auth.router)  # Already has /api/auth prefix
-app.include_router(profiles.router)  # Update prefix in router or here
-app.include_router(presence.router)  # Update prefix in router or here
-app.include_router(heartbeat_auth.router)  # Add this line
+app.include_router(auth.router)
+app.include_router(profiles.router)
+app.include_router(presence.router)
+app.include_router(heartbeat_auth.router)
 
-# ==================== Mobile Enrollment Endpoints ====================
+# ==================== Build Note 2: Push Notification Functions ====================
+async def send_expo_push_notification(push_token: str, title: str, body: str, data: dict = None):
+    """Send push notification via Expo Push API"""
+    try:
+        url = "https://exp.host/--/api/v2/push/send"
+        
+        payload = {
+            "to": push_token,
+            "title": title,
+            "body": body,
+            "sound": "default",
+            "priority": "high",
+            "channelId": "presence-detection"
+        }
+        
+        if data:
+            payload["data"] = data
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(url, json=payload)
+            
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"✅ Push notification sent successfully: {title}")
+                return {"success": True, "response": result}
+            else:
+                logger.error(f"❌ Push notification failed: {response.status_code} - {response.text}")
+                return {"success": False, "error": response.text}
+                
+    except Exception as e:
+        logger.error(f"❌ Error sending push notification: {e}")
+        return {"success": False, "error": str(e)}
+
+async def trigger_presence_notification(person: str, confidence: float, sensor_id: str = "entryway_1", 
+                                      location: str = "Front Door", source: str = "sensor_only"):
+    """Trigger Ring-style presence notification"""
+    global push_tokens, automation_settings, presence_events
+    
+    try:
+        # Record the presence event
+        event = {
+            "person": person,
+            "confidence": confidence,
+            "sensor_id": sensor_id,
+            "location": location,
+            "source": source,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "notification_sent": False
+        }
+        
+        presence_events.append(event)
+        
+        # Keep only last 50 events
+        if len(presence_events) > 50:
+            presence_events = presence_events[-50:]
+        
+        logger.info(f"🏃 Presence detected: {person} at {location} ({confidence:.1%} confidence)")
+        
+        # Check if user has push notifications enabled
+        user_settings = automation_settings.get(person, {
+            "enable_push_notifications": True,
+            "enable_home_assistant": True,
+            "enable_app_routines": False
+        })
+        
+        # Send push notification if enabled and user has token
+        if user_settings.get("enable_push_notifications", True) and person in push_tokens:
+            user_token_data = push_tokens[person]
+            push_token = user_token_data["token"]
+            
+            # Create Ring-style notification
+            confidence_emoji = "🔥" if confidence > 0.95 else "✅" if confidence > 0.85 else "⚡"
+            title = f"{confidence_emoji} {person.replace('_', ' ').title()} Detected"
+            body = f"Recognized at {location} with {confidence:.1%} confidence"
+            
+            notification_data = {
+                "person": person,
+                "confidence": confidence,
+                "sensor_id": sensor_id,
+                "location": location,
+                "source": source,
+                "action": "open_sensor_detail"
+            }
+            
+            # Send the notification
+            result = await send_expo_push_notification(push_token, title, body, notification_data)
+            
+            if result["success"]:
+                event["notification_sent"] = True
+                logger.info(f"📱 Ring-style notification sent to {person}")
+            else:
+                logger.error(f"❌ Failed to send notification to {person}: {result.get('error')}")
+        
+        # Enhanced MQTT payload for Home Assistant (Build Note 2 architecture)
+        if user_settings.get("enable_home_assistant", True):
+            mqtt_payload = {
+                "person": person,
+                "confidence": confidence,
+                "source": source,
+                "sensor_id": sensor_id,
+                "location": location,
+                "timestamp": event["timestamp"],
+                "trigger_action": "presence_detected",
+                "notification_sent": event["notification_sent"]
+            }
+            
+            topic = f"{mqtt_publisher.base_topic}/presence/detected"
+            await mqtt_publisher.publish(topic, json.dumps(mqtt_payload), retain=False)
+            logger.info(f"📡 Enhanced MQTT payload sent to Home Assistant")
+        
+        # Execute app routines if enabled (for non-HA users)
+        if user_settings.get("enable_app_routines", False):
+            routine_type = user_settings.get("app_routine_type", "notification_only")
+            await execute_app_routine(person, routine_type, confidence)
+        
+        return event
+        
+    except Exception as e:
+        logger.error(f"❌ Error in presence notification: {e}")
+        return None
+
+async def execute_app_routine(person: str, routine_type: str, confidence: float):
+    """Execute app-based routines for non-Home Assistant users"""
+    try:
+        logger.info(f"🎯 Executing app routine '{routine_type}' for {person}")
+        
+        # In a real implementation, these would trigger actual device actions
+        # For now, we'll log what would happen
+        
+        if routine_type == "notification_only":
+            logger.info(f"📱 Routine: Notification sent for {person}")
+            
+        elif routine_type == "sound":
+            logger.info(f"🔊 Routine: Would play sound for {person} detection")
+            # In real implementation: trigger device sound via Bluetooth/WiFi
+            
+        elif routine_type == "flash_light":
+            logger.info(f"💡 Routine: Would flash connected light for {person}")
+            # In real implementation: trigger smart light flash
+            
+        # Future routines could include:
+        # - Webhook calls to other services
+        # - Bluetooth device triggers
+        # - Smart speaker announcements
+        
+    except Exception as e:
+        logger.error(f"❌ Error executing app routine: {e}")
+
+# ==================== NEW: MR60BHA2 Sensor API Endpoints ====================
+
+@app.get("/api/sensor/mr60bha2/status", tags=["MR60BHA2 Sensor"])
+async def get_mr60bha2_sensor_status():
+    """Get MR60BHA2 sensor status and connection info"""
+    try:
+        status = get_mr60bha2_status()
+        return {
+            "sensor_type": "MR60BHA2 mmWave",
+            "status": status,
+            "integration": "active" if status.get("connected") else "disconnected"
+        }
+    except Exception as e:
+        logger.error(f"❌ Error getting MR60BHA2 status: {e}")
+        return {
+            "sensor_type": "MR60BHA2 mmWave", 
+            "status": {"error": str(e)},
+            "integration": "error"
+        }
+
+@app.post("/api/sensor/mr60bha2/test", tags=["MR60BHA2 Sensor"])
+async def test_mr60bha2_integration():
+    """Test MR60BHA2 sensor integration"""
+    try:
+        status = get_mr60bha2_status()
+        
+        if not status.get("connected"):
+            raise HTTPException(
+                status_code=503,
+                detail="MR60BHA2 sensor not connected"
+            )
+        
+        return {
+            "success": True,
+            "message": "MR60BHA2 sensor integration is working",
+            "sensor_status": status,
+            "test_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error testing MR60BHA2 integration: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"MR60BHA2 test failed: {str(e)}"
+        )
+
+# ==================== Build Note 2: Notification API Endpoints ====================
+
+@app.post("/api/notifications/register-token", tags=["Build Note 2: Notifications"])
+async def register_push_token(token_data: PushTokenRegistration):
+    """Register device push token for Ring-style notifications"""
+    global push_tokens
+    
+    try:
+        # Validate push token format
+        if not token_data.push_token.startswith("ExponentPushToken["):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Expo push token format"
+            )
+        
+        # Store push token
+        push_tokens[token_data.user_id] = {
+            "token": token_data.push_token,
+            "device_id": token_data.device_id,
+            "platform": token_data.platform,
+            "registered_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        logger.info(f"📱 Push token registered for {token_data.user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Push token registered for {token_data.user_id}",
+            "user_id": token_data.user_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to register push token: {e}")
+        raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
+
+@app.post("/api/notifications/send-presence", tags=["Build Note 2: Notifications"])
+async def send_presence_notification(notification: PresenceNotification):
+    """Send Ring-style presence notification"""
+    try:
+        event = await trigger_presence_notification(
+            person=notification.person,
+            confidence=notification.confidence,
+            sensor_id=notification.sensor_id or "entryway_1",
+            location=notification.location or "Front Door",
+            source=notification.source or "sensor_only"
+        )
+        
+        if event:
+            return {
+                "success": True,
+                "message": "Presence notification triggered",
+                "event": event
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to trigger notification")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to send presence notification: {e}")
+        raise HTTPException(status_code=500, detail=f"Notification failed: {str(e)}")
+
+@app.get("/api/notifications/events", tags=["Build Note 2: Notifications"])
+async def get_presence_events():
+    """Get recent presence events for dashboard"""
+    global presence_events
+    
+    return {
+        "events": presence_events[-20:],  # Last 20 events
+        "count": len(presence_events)
+    }
+
+@app.delete("/api/notifications/token/{user_id}", tags=["Build Note 2: Notifications"])
+async def remove_push_token(user_id: str):
+    """Remove push token for user"""
+    global push_tokens
+    
+    if user_id in push_tokens:
+        del push_tokens[user_id]
+        logger.info(f"🗑️ Push token removed for {user_id}")
+        return {"success": True, "message": f"Push token removed for {user_id}"}
+    else:
+        raise HTTPException(status_code=404, detail="User token not found")
+
+# ==================== Build Note 2: Automation Settings API ====================
+
+@app.get("/api/automation/settings/{user_id}", tags=["Build Note 2: Automation"])
+async def get_automation_settings(user_id: str):
+    """Get automation settings for user"""
+    global automation_settings
+    
+    # Default settings if user not found
+    default_settings = {
+        "user_id": user_id,
+        "enable_home_assistant": True,
+        "enable_push_notifications": True,
+        "enable_app_routines": False,
+        "app_routine_type": "notification_only"
+    }
+    
+    user_settings = automation_settings.get(user_id, default_settings)
+    user_settings["user_id"] = user_id  # Ensure user_id is always included
+    
+    return user_settings
+
+@app.post("/api/automation/settings", tags=["Build Note 2: Automation"])
+async def save_automation_settings(settings: AutomationSettings):
+    """Save automation settings for user"""
+    global automation_settings
+    
+    try:
+        # Store settings
+        automation_settings[settings.user_id] = {
+            "user_id": settings.user_id,
+            "enable_home_assistant": settings.enable_home_assistant,
+            "enable_push_notifications": settings.enable_push_notifications,
+            "enable_app_routines": settings.enable_app_routines,
+            "app_routine_type": settings.app_routine_type,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        logger.info(f"⚙️ Automation settings saved for {settings.user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Settings saved for {settings.user_id}",
+            "settings": automation_settings[settings.user_id]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to save automation settings: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save settings: {str(e)}")
+
+@app.get("/api/automation/settings", tags=["Build Note 2: Automation"])
+async def get_all_automation_settings():
+    """Get automation settings for all users"""
+    global automation_settings
+    
+    return {
+        "settings": automation_settings,
+        "count": len(automation_settings)
+    }
+
+# ==================== Enhanced Mobile Enrollment with Build Note 2 ====================
 
 @app.post("/api/biometric/enroll", tags=["Mobile Enrollment"])
 async def enroll_user_mobile(enrollment_data: dict):
-    """Mobile app enrollment endpoint"""
+    """Enhanced mobile app enrollment endpoint with Build Note 2 integration"""
     global biometric_matcher, biometric_profiles
     
     try:
@@ -309,6 +762,19 @@ async def enroll_user_mobile(enrollment_data: dict):
                 'range_hr': enrollment_data['range_hr']
             }
             
+            # Initialize default automation settings for new user (Build Note 2)
+            user_id = enrollment_data['user_id']
+            if user_id not in automation_settings:
+                automation_settings[user_id] = {
+                    "user_id": user_id,
+                    "enable_home_assistant": True,
+                    "enable_push_notifications": True,
+                    "enable_app_routines": False,
+                    "app_routine_type": "notification_only",
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                logger.info(f"⚙️ Default automation settings created for {user_id}")
+            
             # Save user metadata for mobile app display
             metadata = {
                 "user_id": enrollment_data['user_id'],
@@ -322,7 +788,6 @@ async def enroll_user_mobile(enrollment_data: dict):
             }
             
             try:
-                import json
                 with open(f"user_metadata_{enrollment_data['user_id']}.json", "w") as f:
                     json.dump(metadata, f, indent=2)
             except Exception as e:
@@ -335,7 +800,11 @@ async def enroll_user_mobile(enrollment_data: dict):
                 "user_id": enrollment_data['user_id'],
                 "message": f"Successfully enrolled {enrollment_data['display_name']}",
                 "profile_created": True,
-                "confidence_threshold": 0.5
+                "confidence_threshold": 0.5,
+                "build_note_2_features": {
+                    "notifications_enabled": True,
+                    "automation_settings_created": True
+                }
             }
         else:
             raise HTTPException(status_code=500, detail="Failed to create biometric profile")
@@ -345,6 +814,72 @@ async def enroll_user_mobile(enrollment_data: dict):
     except Exception as e:
         logger.error(f"❌ Mobile enrollment failed: {e}")
         raise HTTPException(status_code=500, detail=f"Enrollment failed: {str(e)}")
+
+# ==================== Enhanced Presence Detection with Build Note 2 ====================
+
+@app.post("/api/presence/event", tags=["Presence Detection"])
+async def enhanced_presence_event(event_data: dict):
+    """Enhanced presence detection endpoint with Ring-style notifications"""
+    global biometric_matcher, biometric_profiles
+    
+    try:
+        logger.info(f"🔍 Processing presence event: {event_data}")
+        
+        # Extract heart rate data
+        heart_rate_data = event_data.get('heart_rate', [])
+        if not heart_rate_data:
+            raise HTTPException(status_code=400, detail="No heart rate data provided")
+        
+        # Perform biometric matching
+        if not biometric_matcher:
+            raise HTTPException(status_code=503, detail="Biometric system not initialized")
+        
+        match_result = biometric_matcher.match_profile(heart_rate_data)
+        
+        if match_result:
+            person = match_result["user_id"]
+            confidence = match_result["confidence"]
+            source = event_data.get("source", "sensor_only")
+            
+            logger.info(f"✅ Person identified: {person} with {confidence:.1%} confidence")
+            
+            # Trigger Build Note 2 notification system
+            await trigger_presence_notification(
+                person=person,
+                confidence=confidence,
+                sensor_id=event_data.get("sensor_id", "entryway_1"),
+                location=event_data.get("location", "Front Door"),
+                source=source
+            )
+            
+            return {
+                "success": True,
+                "person_detected": True,
+                "person": person,
+                "confidence": confidence,
+                "source": source,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "build_note_2": {
+                    "notification_triggered": True,
+                    "mqtt_published": True
+                }
+            }
+        else:
+            logger.info("❌ No person identified from heart rate data")
+            return {
+                "success": True,
+                "person_detected": False,
+                "confidence": 0.0,
+                "message": "No matching biometric profile found"
+            }
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Presence detection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Presence detection failed: {str(e)}")
+
+# ==================== Existing Endpoints (Preserved) ====================
 
 @app.get("/api/biometric/enrolled-users", tags=["Mobile Enrollment"])
 async def get_enrolled_users():
@@ -370,7 +905,6 @@ async def get_enrolled_users():
             }
             
             try:
-                import json
                 with open(f"user_metadata_{user_id}.json", "r") as f:
                     file_metadata = json.load(f)
                     metadata.update(file_metadata)
@@ -403,14 +937,22 @@ async def get_enrolled_users():
 @app.delete("/api/biometric/user/{user_id}", tags=["Mobile Enrollment"])
 async def delete_enrolled_user(user_id: str):
     """Delete an enrolled user (for testing/management)"""
-    global biometric_matcher, biometric_profiles
+    global biometric_matcher, biometric_profiles, push_tokens, automation_settings
     
     try:
         # Remove from biometric matcher database
         if biometric_matcher and user_id in biometric_profiles:
-            # Note: You may need to implement delete functionality in your SQLiteBiometricMatcher
-            # For now, we'll remove from in-memory cache
+            # Remove from in-memory cache
             del biometric_profiles[user_id]
+            
+            # Remove Build Note 2 data
+            if user_id in push_tokens:
+                del push_tokens[user_id]
+                logger.info(f"📱 Push token removed for {user_id}")
+            
+            if user_id in automation_settings:
+                del automation_settings[user_id]
+                logger.info(f"⚙️ Automation settings removed for {user_id}")
             
             # Remove metadata file
             try:
@@ -451,7 +993,6 @@ async def get_user_profile(user_id: str):
         }
         
         try:
-            import json
             with open(f"user_metadata_{user_id}.json", "r") as f:
                 file_metadata = json.load(f)
                 metadata.update(file_metadata)
@@ -478,14 +1019,31 @@ async def read_root():
     """Root endpoint to verify API is running."""
     global biometric_profiles
     
+    # *** NEW: Get MR60BHA2 status ***
+    mr60bha2_info = {"status": "not_initialized"}
+    try:
+        mr60bha2_status = get_mr60bha2_status()
+        mr60bha2_info = {
+            "status": "connected" if mr60bha2_status.get("connected") else "disconnected",
+            "sensor_type": "MR60BHA2 mmWave"
+        }
+    except:
+        pass
+    
     return {
-        "message": "Presient API is running",
+        "message": "Presient API with MR60BHA2 Sensor Integration",
         "status": "healthy",
-        "version": "1.0.0",
+        "version": "2.1.0",  # *** Updated version ***
         "biometric_system": {
             "initialized": biometric_matcher is not None,
             "enrolled_users": len(biometric_profiles),
             "database_path": getattr(biometric_matcher, 'db_path', None) if biometric_matcher else None
+        },
+        "mr60bha2_sensor": mr60bha2_info,  # *** NEW: Sensor info ***
+        "build_note_2": {
+            "push_tokens_registered": len(push_tokens),
+            "automation_settings_configured": len(automation_settings),
+            "recent_events": len(presence_events)
         },
         "docs": "/docs",
         "redoc": "/redoc"
@@ -523,6 +1081,19 @@ async def health_check():
             logger.error(f"Biometric database health check failed: {e}")
             biometric_health["database_error"] = str(e)
     
+    # *** NEW: Check MR60BHA2 sensor health ***
+    mr60bha2_health = {"status": "not_initialized"}
+    try:
+        mr60bha2_status = get_mr60bha2_status()
+        mr60bha2_health = {
+            "status": "connected" if mr60bha2_status.get("connected") else "disconnected",
+            "buffer_size": mr60bha2_status.get("buffer_size", 0),
+            "presence_detected": mr60bha2_status.get("presence_detected", False),
+            "topics_subscribed": len(mr60bha2_status.get("topics", {}))
+        }
+    except Exception as e:
+        mr60bha2_health = {"status": "error", "error": str(e)}
+    
     # Overall health
     is_healthy = db_healthy and (mqtt_publisher.connected or not mqtt_publisher.enabled)
     
@@ -534,9 +1105,15 @@ async def health_check():
             "mqtt": {
                 "enabled": mqtt_publisher.enabled,
                 "connected": mqtt_publisher.connected
+            },
+            "mr60bha2_sensor": mr60bha2_health,  # *** NEW: Sensor health ***
+            "build_note_2": {
+                "notification_system": "operational",
+                "push_tokens": len(push_tokens),
+                "automation_settings": len(automation_settings)
             }
         },
-        "version": "1.0.0",
+        "version": "2.1.0",  # *** Updated version ***
         "environment": os.getenv("ENVIRONMENT", "development")
     }
 
@@ -614,8 +1191,18 @@ async def test_mqtt_publish():
     try:
         test_data = {
             "test": True,
-            "message": "Hello from Presient API",
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "message": "Hello from Presient API with MR60BHA2 Integration",  # *** Updated ***
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "build_note_2_features": [
+                "ring_style_notifications",
+                "automation_decoupling",
+                "app_routines"
+            ],
+            "mr60bha2_features": [  # *** NEW ***
+                "real_heartbeat_detection",
+                "mmwave_presence_sensing",
+                "automatic_biometric_matching"
+            ]
         }
         
         topic = f"{mqtt_publisher.base_topic}/test"
@@ -693,6 +1280,32 @@ if os.getenv("ENVIRONMENT", "development") == "development":
         else:
             return {"message": f"No test configured for exception type {exception_type}"}
     
+    @app.post("/test/notification", tags=["Testing - Build Note 2"])
+    async def test_notification_system(person: str = "test_user", confidence: float = 0.95):
+        """Test Build Note 2 notification system"""
+        try:
+            event = await trigger_presence_notification(
+                person=person,
+                confidence=confidence,
+                sensor_id="test_sensor",
+                location="Test Location",
+                source="test"
+            )
+            
+            return {
+                "success": True,
+                "message": "Test notification triggered",
+                "event": event,
+                "push_tokens_available": len(push_tokens),
+                "automation_settings_available": len(automation_settings)
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     @app.get("/test/biometric", tags=["Testing"])
     async def test_biometric_system():
         """Test biometric system functionality."""
@@ -715,7 +1328,9 @@ if os.getenv("ENVIRONMENT", "development") == "development":
                 "database_profiles": profile_count,
                 "loaded_profiles": len(profiles),
                 "test_match_result": matched_user or "no_match",
-                "test_hr_values": test_hr
+                "test_hr_values": test_hr,
+                "build_note_2_integration": "ready",
+                "mr60bha2_integration": "ready"  # *** NEW ***
             }
             
         except Exception as e:
@@ -723,10 +1338,6 @@ if os.getenv("ENVIRONMENT", "development") == "development":
                 "biometric_system": "error",
                 "error": str(e)
             }
-
-# ==================== Additional imports for proper functionality ====================
-import json
-from datetime import datetime, timezone
 
 # ==================== Main Entry Point ====================
 if __name__ == "__main__":

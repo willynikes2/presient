@@ -1,0 +1,8 @@
+{
+  "john_doe": {
+    "token": "ExponentPushToken[test_token_123]",
+    "device_id": "test_device",
+    "platform": "expo",
+    "registered_at": "2025-06-11T16:36:13.672448+00:00"
+  }
+}
