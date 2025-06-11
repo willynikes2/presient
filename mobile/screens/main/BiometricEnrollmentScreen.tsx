@@ -95,6 +95,7 @@ const BiometricEnrollmentScreen = () => {
               AppleHealthKit.Constants.Permissions.HeartRate,
               AppleHealthKit.Constants.Permissions.RestingHeartRate,
             ],
+            write: [] // No write permissions needed, but property is required
           },
         }
 
@@ -388,6 +389,8 @@ const BiometricEnrollmentScreen = () => {
     }
 
     setIsProcessing(true)
+    // Convert user ID to username format (preserved from your original)
+    const username = user.email?.replace(/[@.]/g, '_') || 'unknown_user'
     console.log(`🔄 Enrolling user: ${fullName} with ${sourceType}`)
     console.log(`👤 Email: ${user.email}`)
     console.log(`🆔 Username: ${username}`) 
@@ -399,8 +402,6 @@ const BiometricEnrollmentScreen = () => {
     }
 
     try {
-      // Convert user ID to username format (preserved from your original)
-      const username = user.email?.replace(/[@.]/g, '_') || 'unknown_user'
       
       // Enhanced enrollment data with dual-sensor support
       const enrollmentData = sourceType === 'dual_sensor' ? {

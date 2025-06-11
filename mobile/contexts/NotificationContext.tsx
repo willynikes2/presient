@@ -1,10 +1,13 @@
-// contexts/NotificationContext.tsx - Ring-Style Notification System
+// Real Push Notification System - Build Note 2
+// mobile/contexts/NotificationContext.tsx
+
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { Platform, Alert } from 'react-native'
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useAuth } from './AuthContext'
 
-// Configure notifications to show in foreground (Ring-style)
+// Configure notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -17,20 +20,26 @@ Notifications.setNotificationHandler({
 
 interface NotificationContextType {
   expoPushToken: string | null
-  notificationsEnabled: boolean
-  isSetup: boolean
+  isNotificationEnabled: boolean
+  setupNotifications: () => Promise<boolean>
   sendTestNotification: () => Promise<void>
-  enableNotifications: () => Promise<boolean>
-  disableNotifications: () => Promise<void>
-  sendDetectionNotification: (person: string, sensor: string, confidence: number) => Promise<void>
+  sendPresenceNotification: (person: string, sensor: string, confidence: number) => Promise<void>
+}
+
+interface PresenceNotificationData {
+  person: string
+  sensor: string
+  confidence: number
+  timestamp: string
+  type: 'presence_detection'
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
 
 export const useNotifications = () => {
   const context = useContext(NotificationContext)
-  if (context === undefined) {
-    throw new Error('useNotifications must be used within a NotificationProvider')
+  if (!context) {
+    throw new Error('useNotifications must be used within NotificationProvider')
   }
   return context
 }
@@ -40,176 +49,195 @@ interface NotificationProviderProps {
 }
 
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children }) => {
+  const { user } = useAuth()
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
-  const [isSetup, setIsSetup] = useState(false)
+  const [isNotificationEnabled, setIsNotificationEnabled] = useState(false)
 
+  // Setup notifications on app start
   useEffect(() => {
-    setupNotifications()
-    setupNotificationListeners()
-  }, [])
-
-  const setupNotifications = async () => {
-    try {
-      console.log('🔧 Setting up Ring-style notifications...')
-      
-      // Check if notifications are enabled in settings
-      const enabled = await AsyncStorage.getItem('notifications_enabled')
-      setNotificationsEnabled(enabled === 'true')
-
-      if (!Device.isDevice) {
-        console.log('⚠️ Push notifications only work on physical devices')
-        setIsSetup(true)
-        return
-      }
-
-      // Get existing permissions
-      const { status: existingStatus } = await Notifications.getPermissionsAsync()
-      
-      if (existingStatus === 'granted') {
-        await setupPushToken()
-      }
-      
-      setIsSetup(true)
-      console.log('🎉 Ring-style notifications setup complete!')
-      
-    } catch (error) {
-      console.error('❌ Notification setup error:', error)
-      setIsSetup(true)
+    if (user) {
+      setupNotifications()
     }
-  }
+  }, [user])
 
-  const setupPushToken = async () => {
-    try {
-      const token = await Notifications.getExpoPushTokenAsync({
-        projectId: 'presient-app'
-      })
-      
-      setExpoPushToken(token.data)
-      console.log('✅ Push token obtained:', token.data)
-      
-      // TODO: Send token to backend for storage
-      // await sendTokenToBackend(token.data)
-      
-    } catch (error) {
-      console.error('❌ Push token error:', error)
-    }
-  }
-
-  const setupNotificationListeners = () => {
-    // Listen for notifications when app is open
-    const notificationListener = Notifications.addNotificationReceivedListener(notification => {
-      console.log('🔔 Ring-style notification received:', notification)
+  // Listen for notification taps
+  useEffect(() => {
+    // Handle notification tap when app is in foreground
+    const foregroundSubscription = Notifications.addNotificationReceivedListener(notification => {
+      console.log('📱 Notification received in foreground:', notification)
     })
 
-    // Listen for notification taps (Ring-style navigation)
-    const responseListener = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('📱 Notification tapped:', response)
+    // Handle notification tap when app is in background
+    const backgroundSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('👆 Notification tapped:', response)
       
-      const data = response.notification.request.content.data
-      if (data?.sensor) {
-        // Log navigation intent - actual navigation will be handled by the app
-        console.log('🔄 Should navigate to sensor:', data.sensor, 'person:', data.person)
-        // TODO: Use a different navigation approach or event system
+      const data = response.notification.request.content.data as unknown as PresenceNotificationData
+      if (data && data.type === 'presence_detection') {
+        // Navigate to sensor detail screen
+        // This will be implemented when we add navigation
+        console.log(`🔍 Should navigate to sensor detail: ${data.sensor}`)
+        console.log(`👤 Person: ${data.person}, Confidence: ${data.confidence}%`)
       }
     })
 
     return () => {
-      Notifications.removeNotificationSubscription(notificationListener)
-      Notifications.removeNotificationSubscription(responseListener)
+      foregroundSubscription.remove()
+      backgroundSubscription.remove()
     }
-  }
+  }, [])
 
-  const enableNotifications = async (): Promise<boolean> => {
+  const setupNotifications = async (): Promise<boolean> => {
     try {
+      console.log('🔔 Setting up Ring-style notifications...')
+
+      // Check if running on physical device
       if (!Device.isDevice) {
-        console.log('⚠️ Push notifications only work on physical devices')
+        Alert.alert('Info', 'Push notifications only work on physical devices')
         return false
       }
 
-      console.log('🔑 Requesting notification permissions...')
-      const { status } = await Notifications.requestPermissionsAsync()
+      // Request permissions
+      const { status: existingStatus } = await Notifications.getPermissionsAsync()
+      let finalStatus = existingStatus
       
-      if (status !== 'granted') {
-        console.log('❌ Notification permissions denied')
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync()
+        finalStatus = status
+      }
+      
+      if (finalStatus !== 'granted') {
+        Alert.alert('Error', 'Push notification permissions are required for Ring-style alerts')
         return false
       }
 
-      await setupPushToken()
-      setNotificationsEnabled(true)
-      await AsyncStorage.setItem('notifications_enabled', 'true')
+      // Get push token
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: '47c2bb5c-0d82-4c73-8d87-0669bf17cfe9' // Replace with your actual project ID
+      })
       
-      console.log('✅ Ring-style notifications enabled!')
+      const token = tokenData.data
+      console.log('✅ Expo push token generated:', token)
+      
+      setExpoPushToken(token)
+      setIsNotificationEnabled(true)
+
+      // Save token to your backend/Supabase
+      if (user && token) {
+        await savePushTokenToBackend(token)
+      }
+
+      console.log('🔔 Ring-style notifications setup complete!')
       return true
-      
+
     } catch (error) {
-      console.error('❌ Enable notifications error:', error)
+      console.error('❌ Notification setup error:', error)
+      Alert.alert('Error', 'Failed to setup notifications. Please try again.')
       return false
     }
   }
 
-  const disableNotifications = async () => {
+  const savePushTokenToBackend = async (token: string) => {
     try {
-      setNotificationsEnabled(false)
-      await AsyncStorage.setItem('notifications_enabled', 'false')
-      console.log('🔕 Ring-style notifications disabled')
+      console.log('💾 Saving push token to backend...')
+      
+      // Save to your FastAPI backend
+      const response = await fetch('http://192.168.1.135:8000/api/notifications/register-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: user?.email?.replace(/[@.]/g, '_') || 'unknown_user',
+          push_token: token,
+          device_type: Platform.OS,
+          device_id: Device.modelId || 'unknown_device'
+        })
+      })
+
+      if (response.ok) {
+        console.log('✅ Push token saved to backend')
+      } else {
+        console.error('❌ Failed to save push token to backend')
+      }
     } catch (error) {
-      console.error('❌ Disable notifications error:', error)
+      console.error('❌ Error saving push token:', error)
     }
   }
 
   const sendTestNotification = async () => {
     try {
-      if (!notificationsEnabled) {
-        console.log('⚠️ Notifications not enabled')
+      if (!expoPushToken) {
+        Alert.alert('Error', 'No push token available. Please setup notifications first.')
         return
       }
 
+      console.log('🧪 Sending test Ring-style notification...')
+
+      // Schedule local notification for immediate testing
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: '🔍 testimg2_gnail_cm detected',
-          body: 'Recognized at Mobile Sensor with 99.1% confidence',
-          data: { 
-            person: 'testimg2_gnail_cm',
-            sensor: 'mobile_app_sensor',
-            confidence: 0.991,
-            timestamp: new Date().toISOString()
-          },
+          title: '🏠 Test User detected',
+          body: 'Recognized at Mobile Sensor with 95.0% confidence',
+          data: {
+            person: 'test_user',
+            sensor: 'mobile_app_sensor', 
+            confidence: 95.0,
+            timestamp: new Date().toISOString(),
+            type: 'presence_detection'
+          } as PresenceNotificationData,
         },
         trigger: { seconds: 2 },
       })
-      
-      console.log('📨 Ring-style test notification sent')
+
+      Alert.alert('🔔 Test Notification Sent!', 'Check your notification tray in 2 seconds')
+
     } catch (error) {
       console.error('❌ Test notification error:', error)
+      Alert.alert('Error', 'Failed to send test notification')
     }
   }
 
-  const sendDetectionNotification = async (person: string, sensor: string, confidence: number) => {
+  const sendPresenceNotification = async (person: string, sensor: string, confidence: number) => {
     try {
-      if (!notificationsEnabled) {
+      if (!expoPushToken || !isNotificationEnabled) {
+        console.log('⚠️ Notifications not enabled, skipping')
         return
       }
 
-      const confidencePercent = Math.round(confidence * 100)
-      
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: `🔍 ${person} detected`,
-          body: `Recognized at ${sensor} with ${confidencePercent}% confidence`,
-          data: { 
-            person,
-            sensor,
-            confidence,
-            timestamp: new Date().toISOString()
-          },
+      console.log(`🔔 Sending Ring-style notification: ${person} detected`)
+
+      // Send via Expo push service (for real push notifications)
+      const message = {
+        to: expoPushToken,
+        title: `🏠 ${person} detected`,
+        body: `Recognized at ${sensor} with ${confidence.toFixed(1)}% confidence`,
+        data: {
+          person,
+          sensor,
+          confidence,
+          timestamp: new Date().toISOString(),
+          type: 'presence_detection'
+        } as PresenceNotificationData,
+        sound: 'default',
+        badge: 1,
+      }
+
+      // Send to Expo push service
+      const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Accept-encoding': 'gzip, deflate',
+          'Content-Type': 'application/json',
         },
-        trigger: { seconds: 1 },
+        body: JSON.stringify(message),
       })
-      
-      console.log(`📨 Ring-style detection notification sent for ${person}`)
+
+      const result = await response.json()
+      console.log('📡 Push notification sent:', result)
+
     } catch (error) {
-      console.error('❌ Detection notification error:', error)
+      console.error('❌ Presence notification error:', error)
     }
   }
 
@@ -217,12 +245,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
     <NotificationContext.Provider
       value={{
         expoPushToken,
-        notificationsEnabled,
-        isSetup,
+        isNotificationEnabled,
+        setupNotifications,
         sendTestNotification,
-        enableNotifications,
-        disableNotifications,
-        sendDetectionNotification,
+        sendPresenceNotification,
       }}
     >
       {children}

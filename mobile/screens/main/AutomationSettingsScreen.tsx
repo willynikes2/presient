@@ -1,288 +1,408 @@
-// screens/main/AutomationSettingsScreen.tsx - Decoupled Automation System
+// Automation Settings Screen - Build Note 2
+// mobile/screens/main/AutomationSettingsScreen.tsx
+
 import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
   Switch,
   Alert,
+  ActivityIndicator
 } from 'react-native'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useNavigation } from '@react-navigation/native'
+import { useAuth } from '../../contexts/AuthContext'
+import { useNotifications } from '../../contexts/NotificationContext'
 
 interface AutomationSettings {
   homeAssistantEnabled: boolean
   pushNotificationsEnabled: boolean
   appRoutinesEnabled: boolean
-  selectedRoutine: 'notification_only' | 'sound_haptic' | 'webhook' | 'custom'
-  webhookUrl: string
+  selectedRoutine: string
+  soundEnabled: boolean
+  hapticEnabled: boolean
+  webhookUrl?: string
 }
 
-interface SensorSettings {
-  [sensorId: string]: AutomationSettings
+interface AppRoutine {
+  id: string
+  name: string
+  description: string
+  actions: string[]
 }
 
-export default function AutomationSettingsScreen() {
-  const [settings, setSettings] = useState<SensorSettings>({})
-  const [isLoading, setIsLoading] = useState(true)
+const AutomationSettingsScreen = () => {
+  const navigation = useNavigation()
+  const { user } = useAuth()
+  const { isNotificationEnabled, setupNotifications, sendTestNotification } = useNotifications()
+  
+  const [settings, setSettings] = useState<AutomationSettings>({
+    homeAssistantEnabled: true,
+    pushNotificationsEnabled: true,
+    appRoutinesEnabled: false,
+    selectedRoutine: 'notify_only',
+    soundEnabled: true,
+    hapticEnabled: true
+  })
+  
+  const [isLoading, setIsLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
+  // Available app routines for non-HA users
+  const appRoutines: AppRoutine[] = [
+    {
+      id: 'notify_only',
+      name: '📱 Notification Only',
+      description: 'Send push notification when person detected',
+      actions: ['Push notification']
+    },
+    {
+      id: 'notify_sound',
+      name: '🔔 Notification + Sound',
+      description: 'Send notification and play sound on phone',
+      actions: ['Push notification', 'Play sound']
+    },
+    {
+      id: 'notify_haptic',
+      name: '📳 Notification + Haptic',
+      description: 'Send notification with haptic feedback',
+      actions: ['Push notification', 'Haptic feedback']
+    },
+    {
+      id: 'full_routine',
+      name: '🎯 Full App Routine',
+      description: 'Notification, sound, and haptic feedback',
+      actions: ['Push notification', 'Play sound', 'Haptic feedback']
+    },
+    {
+      id: 'webhook_custom',
+      name: '🌐 Custom Webhook',
+      description: 'Send to custom webhook URL for advanced automation',
+      actions: ['Push notification', 'Custom webhook']
+    }
+  ]
+
+  // Load settings on mount
   useEffect(() => {
     loadSettings()
   }, [])
 
   const loadSettings = async () => {
     try {
-      const savedSettings = await AsyncStorage.getItem('automation_settings')
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings))
-      } else {
-        // Default settings for known sensors
-        const defaultSettings: SensorSettings = {
-          'mobile_app_sensor': {
-            homeAssistantEnabled: true,
-            pushNotificationsEnabled: true,
-            appRoutinesEnabled: false,
-            selectedRoutine: 'notification_only',
-            webhookUrl: ''
-          },
-          'front_door_sensor': {
-            homeAssistantEnabled: true,
-            pushNotificationsEnabled: true,
-            appRoutinesEnabled: false,
-            selectedRoutine: 'sound_haptic',
-            webhookUrl: ''
-          }
-        }
-        setSettings(defaultSettings)
-        await saveSettings(defaultSettings)
-      }
+      setIsLoading(true)
+      console.log('⚙️ Loading automation settings...')
+      
+      // TODO: Load from AsyncStorage or backend
+      // For now, use defaults
+      console.log('✅ Settings loaded (using defaults)')
+      
     } catch (error) {
-      console.error('❌ Error loading automation settings:', error)
+      console.error('❌ Error loading settings:', error)
     } finally {
       setIsLoading(false)
     }
   }
 
-  const saveSettings = async (newSettings: SensorSettings) => {
+  const saveSettings = async () => {
     try {
-      await AsyncStorage.setItem('automation_settings', JSON.stringify(newSettings))
-      console.log('✅ Automation settings saved')
+      setIsSaving(true)
+      console.log('💾 Saving automation settings:', settings)
+      
+      // Save to backend
+      const response = await fetch('http://192.168.1.135:8000/api/automation/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: user?.email?.replace(/[@.]/g, '_') || 'unknown_user',
+          settings: settings
+        })
+      })
+
+      if (response.ok) {
+        console.log('✅ Settings saved successfully')
+        Alert.alert(
+          '✅ Settings Saved',
+          'Your automation preferences have been updated.',
+          [{ text: 'OK' }],
+          { userInterfaceStyle: 'dark' }
+        )
+      } else {
+        throw new Error('Failed to save settings')
+      }
+      
     } catch (error) {
-      console.error('❌ Error saving automation settings:', error)
+      console.error('❌ Error saving settings:', error)
+      Alert.alert(
+        '❌ Save Failed', 
+        'Could not save settings. Please try again.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+    } finally {
+      setIsSaving(false)
     }
   }
 
-  const updateSensorSetting = async (sensorId: string, key: keyof AutomationSettings, value: any) => {
-    const newSettings = {
-      ...settings,
-      [sensorId]: {
-        ...settings[sensorId],
-        [key]: value
-      }
+  const toggleHomeAssistant = (enabled: boolean) => {
+    setSettings(prev => ({
+      ...prev,
+      homeAssistantEnabled: enabled,
+      appRoutinesEnabled: !enabled // Disable app routines when HA is enabled
+    }))
+    
+    if (enabled) {
+      Alert.alert(
+        '🏠 Home Assistant Mode',
+        'Home Assistant will handle all device automation. App routines will be disabled.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+    }
+  }
+
+  const toggleAppRoutines = (enabled: boolean) => {
+    if (enabled && settings.homeAssistantEnabled) {
+      Alert.alert(
+        '⚠️ Conflict',
+        'Please disable Home Assistant integration first to use app routines.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+      return
     }
     
-    setSettings(newSettings)
-    await saveSettings(newSettings)
+    setSettings(prev => ({
+      ...prev,
+      appRoutinesEnabled: enabled,
+      homeAssistantEnabled: !enabled // Disable HA when app routines are enabled
+    }))
   }
 
-  const resetToDefaults = () => {
-    Alert.alert(
-      'Reset Settings',
-      'This will reset all automation settings to defaults. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Reset', 
-          style: 'destructive',
-          onPress: async () => {
-            await AsyncStorage.removeItem('automation_settings')
-            loadSettings()
-          }
-        }
-      ]
+  const toggleNotifications = async (enabled: boolean) => {
+    if (enabled && !isNotificationEnabled) {
+      const success = await setupNotifications()
+      if (!success) return
+    }
+    
+    setSettings(prev => ({
+      ...prev,
+      pushNotificationsEnabled: enabled
+    }))
+  }
+
+  const selectRoutine = (routineId: string) => {
+    setSettings(prev => ({
+      ...prev,
+      selectedRoutine: routineId
+    }))
+  }
+
+  const testCurrentSetup = async () => {
+    try {
+      console.log('🧪 Testing current automation setup...')
+      
+      if (settings.pushNotificationsEnabled) {
+        await sendTestNotification()
+      }
+      
+      if (settings.appRoutinesEnabled) {
+        const routine = appRoutines.find(r => r.id === settings.selectedRoutine)
+        Alert.alert(
+          '🧪 App Routine Test',
+          `Testing "${routine?.name}" routine:\n\n${routine?.actions.join('\n')}`,
+          [{ text: 'OK' }],
+          { userInterfaceStyle: 'dark' }
+        )
+      }
+      
+      if (settings.homeAssistantEnabled) {
+        Alert.alert(
+          '🏠 Home Assistant Test',
+          'MQTT presence event would be published to Home Assistant for automation.',
+          [{ text: 'OK' }],
+          { userInterfaceStyle: 'dark' }
+        )
+      }
+      
+    } catch (error) {
+      console.error('❌ Test error:', error)
+    }
+  }
+
+  const getSelectedRoutine = () => {
+    return appRoutines.find(r => r.id === settings.selectedRoutine)
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10B981" />
+          <Text style={styles.loadingText}>Loading automation settings...</Text>
+        </View>
+      </SafeAreaView>
     )
   }
 
-  const getRoutineDescription = (routine: string) => {
-    switch (routine) {
-      case 'notification_only': return 'Push notification only'
-      case 'sound_haptic': return 'Notification + sound + vibration'
-      case 'webhook': return 'Custom webhook trigger'
-      case 'custom': return 'Custom automation'
-      default: return 'Unknown routine'
-    }
-  }
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>⚙️ Automation Settings</Text>
+          <Text style={styles.subtitle}>
+            Configure how Presient handles presence detection events
+          </Text>
+        </View>
 
-  const renderSensorSettings = (sensorId: string, sensorSettings: AutomationSettings) => (
-    <View key={sensorId} style={styles.sensorContainer}>
-      <Text style={styles.sensorTitle}>
-        📡 {sensorId.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-      </Text>
-      
-      {/* Home Assistant Integration */}
-      <View style={styles.settingRow}>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingLabel}>Home Assistant Integration</Text>
-          <Text style={styles.settingDescription}>
-            Use Home Assistant automations (advanced users)
-          </Text>
-        </View>
-        <Switch
-          value={sensorSettings.homeAssistantEnabled}
-          onValueChange={(value) => updateSensorSetting(sensorId, 'homeAssistantEnabled', value)}
-          trackColor={{ false: '#374151', true: '#3b82f6' }}
-          thumbColor={sensorSettings.homeAssistantEnabled ? '#ffffff' : '#9ca3af'}
-        />
-      </View>
-      
-      {/* Push Notifications */}
-      <View style={styles.settingRow}>
-        <View style={styles.settingInfo}>
-          <Text style={styles.settingLabel}>Push Notifications</Text>
-          <Text style={styles.settingDescription}>
-            Ring-style notifications when person detected
-          </Text>
-        </View>
-        <Switch
-          value={sensorSettings.pushNotificationsEnabled}
-          onValueChange={(value) => updateSensorSetting(sensorId, 'pushNotificationsEnabled', value)}
-          trackColor={{ false: '#374151', true: '#3b82f6' }}
-          thumbColor={sensorSettings.pushNotificationsEnabled ? '#ffffff' : '#9ca3af'}
-        />
-      </View>
-      
-      {/* App Routines (only show if HA is disabled) */}
-      {!sensorSettings.homeAssistantEnabled && (
-        <>
-          <View style={styles.settingRow}>
-            <View style={styles.settingInfo}>
-              <Text style={styles.settingLabel}>App Routines</Text>
-              <Text style={styles.settingDescription}>
-                Simple automations for non-HA users
-              </Text>
-            </View>
+        {/* Home Assistant Integration */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>🏠 Home Assistant Integration</Text>
             <Switch
-              value={sensorSettings.appRoutinesEnabled}
-              onValueChange={(value) => updateSensorSetting(sensorId, 'appRoutinesEnabled', value)}
-              trackColor={{ false: '#374151', true: '#3b82f6' }}
-              thumbColor={sensorSettings.appRoutinesEnabled ? '#ffffff' : '#9ca3af'}
+              value={settings.homeAssistantEnabled}
+              onValueChange={toggleHomeAssistant}
+              trackColor={{ false: '#374151', true: '#10B981' }}
+              thumbColor="#FFFFFF"
             />
           </View>
+          <Text style={styles.sectionDescription}>
+            When enabled, Presient publishes MQTT events to Home Assistant for smart home automation. 
+            Disable this to use app-based routines instead.
+          </Text>
+          {settings.homeAssistantEnabled && (
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusText}>✅ MQTT events published to Home Assistant</Text>
+              <Text style={styles.statusText}>🏠 Home Assistant handles all device control</Text>
+              <Text style={styles.statusText}>📡 Topic: presient/presence</Text>
+            </View>
+          )}
+        </View>
+
+        {/* Push Notifications */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>🔔 Push Notifications</Text>
+            <Switch
+              value={settings.pushNotificationsEnabled}
+              onValueChange={toggleNotifications}
+              trackColor={{ false: '#374151', true: '#10B981' }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+          <Text style={styles.sectionDescription}>
+            Send Ring-style push notifications when family members are detected.
+          </Text>
+          {settings.pushNotificationsEnabled && (
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusText}>
+                ✅ Notifications enabled: {isNotificationEnabled ? 'Ready' : 'Setup required'}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* App Routines */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>📱 App Routines</Text>
+            <Switch
+              value={settings.appRoutinesEnabled}
+              onValueChange={toggleAppRoutines}
+              trackColor={{ false: '#374151', true: '#10B981' }}
+              thumbColor="#FFFFFF"
+              disabled={settings.homeAssistantEnabled}
+            />
+          </View>
+          <Text style={styles.sectionDescription}>
+            Use app-based automation routines for users without Home Assistant.
+          </Text>
           
-          {/* Routine Selection */}
-          {sensorSettings.appRoutinesEnabled && (
+          {settings.appRoutinesEnabled && (
             <View style={styles.routineContainer}>
-              <Text style={styles.routineTitle}>Select App Routine:</Text>
-              
-              {['notification_only', 'sound_haptic', 'webhook', 'custom'].map((routine) => (
+              <Text style={styles.routineTitle}>Select Routine:</Text>
+              {appRoutines.map((routine) => (
                 <TouchableOpacity
-                  key={routine}
+                  key={routine.id}
                   style={[
                     styles.routineOption,
-                    sensorSettings.selectedRoutine === routine && styles.routineOptionSelected
+                    settings.selectedRoutine === routine.id && styles.routineOptionSelected
                   ]}
-                  onPress={() => updateSensorSetting(sensorId, 'selectedRoutine', routine)}
+                  onPress={() => selectRoutine(routine.id)}
                 >
                   <View style={styles.routineInfo}>
-                    <Text style={[
-                      styles.routineLabel,
-                      sensorSettings.selectedRoutine === routine && styles.routineLabelSelected
-                    ]}>
-                      {getRoutineDescription(routine)}
-                    </Text>
-                    {routine === 'webhook' && (
-                      <Text style={styles.routineDescription}>
-                        Trigger custom webhook URL
-                      </Text>
-                    )}
+                    <Text style={styles.routineName}>{routine.name}</Text>
+                    <Text style={styles.routineDescription}>{routine.description}</Text>
+                    <View style={styles.routineActions}>
+                      {routine.actions.map((action, index) => (
+                        <Text key={index} style={styles.routineAction}>• {action}</Text>
+                      ))}
+                    </View>
                   </View>
-                  {sensorSettings.selectedRoutine === routine && (
-                    <Text style={styles.checkmark}>✓</Text>
+                  {settings.selectedRoutine === routine.id && (
+                    <Text style={styles.selectedIndicator}>✅</Text>
                   )}
                 </TouchableOpacity>
               ))}
             </View>
           )}
-        </>
-      )}
-      
-      {/* Home Assistant Info */}
-      {sensorSettings.homeAssistantEnabled && (
-        <View style={styles.infoContainer}>
-          <Text style={styles.infoTitle}>🏠 Home Assistant Mode</Text>
-          <Text style={styles.infoText}>
-            Automations will be handled by your Home Assistant installation. 
-            Configure YAML automations to respond to MQTT messages on topic: presient/person_detected
-          </Text>
         </View>
-      )}
-    </View>
-  )
 
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={styles.loadingText}>Loading settings...</Text>
-      </View>
-    )
-  }
+        {/* Test Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🧪 Test Current Setup</Text>
+          <Text style={styles.sectionDescription}>
+            Test your current automation configuration to ensure everything works as expected.
+          </Text>
+          <TouchableOpacity style={styles.testButton} onPress={testCurrentSetup}>
+            <Text style={styles.testButtonText}>🚀 Test Automation</Text>
+          </TouchableOpacity>
+        </View>
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>Automation Settings</Text>
-        <Text style={styles.subtitle}>
-          Configure how Presient responds to detections. Choose between Home Assistant integration or simple app routines.
-        </Text>
-      </View>
-      
-      <View style={styles.philosophyContainer}>
-        <Text style={styles.philosophyTitle}>🎯 Design Philosophy</Text>
-        <Text style={styles.philosophyText}>
-          • <Text style={styles.bold}>Power Users:</Text> Use Home Assistant for advanced automations
-        </Text>
-        <Text style={styles.philosophyText}>
-          • <Text style={styles.bold}>Regular Users:</Text> Use app routines for simple responses
-        </Text>
-        <Text style={styles.philosophyText}>
-          • <Text style={styles.bold}>Future Ready:</Text> Compatible with Presient Hub
-        </Text>
-      </View>
-      
-      {Object.entries(settings).map(([sensorId, sensorSettings]) =>
-        renderSensorSettings(sensorId, sensorSettings)
-      )}
-      
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity style={styles.resetButton} onPress={resetToDefaults}>
-          <Text style={styles.resetButtonText}>🔄 Reset to Defaults</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.testButton} onPress={() => Alert.alert('Test', 'This would test the current automation settings')}>
-          <Text style={styles.testButtonText}>🧪 Test Settings</Text>
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.footerContainer}>
-        <Text style={styles.footerTitle}>💡 How it Works</Text>
-        <Text style={styles.footerText}>
-          When a person is detected with sufficient confidence, Presient will:
-        </Text>
-        <Text style={styles.footerText}>
-          1. Send push notification (if enabled)
-        </Text>
-        <Text style={styles.footerText}>
-          2. Publish MQTT message (if Home Assistant enabled)
-        </Text>
-        <Text style={styles.footerText}>
-          3. Execute app routine (if enabled and HA disabled)
-        </Text>
-        <Text style={styles.footerText}>
-          4. Log the detection event
-        </Text>
-      </View>
-    </ScrollView>
+        {/* Save Button */}
+        <View style={styles.saveSection}>
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+            onPress={saveSettings}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>💾 Save Settings</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* Current Configuration Summary */}
+        <View style={styles.summarySection}>
+          <Text style={styles.summaryTitle}>📋 Current Configuration</Text>
+          <View style={styles.summaryContainer}>
+            <Text style={styles.summaryItem}>
+              🏠 Home Assistant: {settings.homeAssistantEnabled ? 'Enabled' : 'Disabled'}
+            </Text>
+            <Text style={styles.summaryItem}>
+              🔔 Push Notifications: {settings.pushNotificationsEnabled ? 'Enabled' : 'Disabled'}
+            </Text>
+            <Text style={styles.summaryItem}>
+              📱 App Routines: {settings.appRoutinesEnabled ? 'Enabled' : 'Disabled'}
+            </Text>
+            {settings.appRoutinesEnabled && (
+              <Text style={styles.summaryItem}>
+                🎯 Selected Routine: {getSelectedRoutine()?.name}
+              </Text>
+            )}
+          </View>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   )
 }
 
@@ -291,22 +411,26 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f172a',
   },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
   },
   loadingText: {
-    color: '#94a3b8',
     fontSize: 16,
+    color: '#94a3b8',
+    marginTop: 12,
   },
-  headerContainer: {
-    padding: 20,
-    backgroundColor: '#1e293b',
+  header: {
+    marginBottom: 30,
+    alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 8,
@@ -314,173 +438,144 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#94a3b8',
+    textAlign: 'center',
     lineHeight: 22,
   },
-  philosophyContainer: {
+  section: {
+    marginBottom: 30,
     backgroundColor: '#1e293b',
-    margin: 20,
-    padding: 16,
-    borderRadius: 12,
-  },
-  philosophyTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 12,
-  },
-  philosophyText: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginBottom: 6,
-  },
-  bold: {
-    fontWeight: 'bold',
-    color: '#e2e8f0',
-  },
-  sensorContainer: {
-    backgroundColor: '#1e293b',
-    margin: 20,
-    marginTop: 0,
+    borderRadius: 16,
     padding: 20,
-    borderRadius: 12,
   },
-  sensorTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 16,
-  },
-  settingRow: {
+  sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#374151',
+    marginBottom: 12,
   },
-  settingInfo: {
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ffffff',
     flex: 1,
-    marginRight: 12,
   },
-  settingLabel: {
+  sectionDescription: {
+    fontSize: 14,
+    color: '#94a3b8',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  statusContainer: {
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    color: '#10b981',
+    marginBottom: 4,
+  },
+  routineContainer: {
+    marginTop: 16,
+  },
+  routineTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#e2e8f0',
+    marginBottom: 12,
+  },
+  routineOption: {
+    backgroundColor: '#374151',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  routineOptionSelected: {
+    borderColor: '#10b981',
+    backgroundColor: '#064e3b',
+  },
+  routineInfo: {
+    flex: 1,
+  },
+  routineName: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
     marginBottom: 4,
   },
-  settingDescription: {
-    fontSize: 14,
-    color: '#94a3b8',
-  },
-  routineContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#374151',
-  },
-  routineTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 12,
-  },
-  routineOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 8,
-    backgroundColor: '#374151',
-  },
-  routineOptionSelected: {
-    backgroundColor: '#3b82f6',
-  },
-  routineInfo: {
-    flex: 1,
-  },
-  routineLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  routineLabelSelected: {
-    color: '#ffffff',
-  },
   routineDescription: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  checkmark: {
-    fontSize: 16,
-    color: '#ffffff',
-    fontWeight: 'bold',
-  },
-  infoContainer: {
-    backgroundColor: '#065f46',
-    padding: 16,
-    borderRadius: 8,
-    marginTop: 16,
-  },
-  infoTitle: {
     fontSize: 14,
-    fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#94a3b8',
     marginBottom: 8,
   },
-  infoText: {
+  routineActions: {
+    marginTop: 4,
+  },
+  routineAction: {
     fontSize: 12,
-    color: '#d1fae5',
-    lineHeight: 16,
+    color: '#64748b',
+    marginBottom: 2,
   },
-  actionsContainer: {
-    flexDirection: 'row',
-    margin: 20,
-    gap: 12,
-  },
-  resetButton: {
-    flex: 1,
-    backgroundColor: '#374151',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  resetButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
+  selectedIndicator: {
+    fontSize: 18,
+    color: '#10b981',
+    marginLeft: 12,
   },
   testButton: {
-    flex: 1,
     backgroundColor: '#3b82f6',
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 24,
     borderRadius: 8,
     alignItems: 'center',
+    marginTop: 8,
   },
   testButtonText: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
-  footerContainer: {
-    backgroundColor: '#1e293b',
-    margin: 20,
-    marginTop: 0,
-    padding: 16,
-    borderRadius: 12,
+  saveSection: {
+    marginBottom: 20,
   },
-  footerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  saveButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#64748b',
+  },
+  saveButtonText: {
+    color: '#ffffff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  summarySection: {
+    marginBottom: 30,
+  },
+  summaryTitle: {
+    fontSize: 18,
+    fontWeight: '600',
     color: '#ffffff',
     marginBottom: 12,
   },
-  footerText: {
+  summaryContainer: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 16,
+  },
+  summaryItem: {
     fontSize: 14,
-    color: '#94a3b8',
-    marginBottom: 6,
+    color: '#e2e8f0',
+    marginBottom: 8,
   },
 })
+
+export default AutomationSettingsScreen

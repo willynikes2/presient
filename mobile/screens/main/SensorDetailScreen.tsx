@@ -1,100 +1,217 @@
-// screens/main/SensorDetailScreen.tsx - Ring-Style Notification Target
+// Sensor Detail Screen - Ring-Style Navigation Target
+// mobile/screens/main/SensorDetailScreen.tsx
+
 import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  ActivityIndicator,
   RefreshControl,
-  Alert,
+  Alert
 } from 'react-native'
-import { useRoute, useNavigation } from '@react-navigation/native'
+import { useNavigation, useRoute } from '@react-navigation/native'
+import { useAuth } from '../../contexts/AuthContext'
 
-interface RouteParams {
-  sensor: string
-  person?: string
-  confidence?: number
-}
-
-interface ActivityItem {
+interface SensorEvent {
   id: string
   person: string
-  timestamp: string
   confidence: number
-  sensor: string
-  source: 'sensor_only' | 'watch_only' | 'sensor+watch'
+  timestamp: string
+  sensor_id: string
+  device_type: string
+  source: string
+  location?: string
+  heart_rate?: number
+  heart_rate_wearable?: number
+  breathing_rate?: number
 }
 
-export default function SensorDetailScreen() {
-  const route = useRoute()
+interface SensorInfo {
+  id: string
+  name: string
+  type: string
+  location: string
+  status: 'online' | 'offline' | 'warning'
+  last_seen: string
+  total_detections: number
+  accuracy_rate: number
+}
+
+const SensorDetailScreen = () => {
   const navigation = useNavigation()
-  const params = route.params as RouteParams
+  const route = useRoute()
+  const { user } = useAuth()
   
+  // Get sensor ID from navigation params (from notification tap)
+  const sensorId = (route.params as any)?.sensor || 'mobile_app_sensor'
+  
+  const [sensorInfo, setSensorInfo] = useState<SensorInfo | null>(null)
+  const [recentEvents, setRecentEvents] = useState<SensorEvent[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const [activities, setActivities] = useState<ActivityItem[]>([])
-  const [sensorStatus, setSensorStatus] = useState<'online' | 'offline' | 'error'>('online')
+
+  const BACKEND_URL = 'http://192.168.1.135:8000'
 
   useEffect(() => {
     loadSensorData()
-  }, [params.sensor])
+  }, [sensorId])
 
-  const loadSensorData = async () => {
+  const loadSensorData = async (isRefresh = false) => {
     try {
-      console.log(`📡 Loading data for sensor: ${params.sensor}`)
+      if (isRefresh) {
+        setIsRefreshing(true)
+      } else {
+        setIsLoading(true)
+      }
       
-      // TODO: Fetch real sensor data from backend
-      // const response = await fetch(`/api/sensors/${params.sensor}/activity`)
-      // const data = await response.json()
+      console.log(`📊 Loading sensor data for: ${sensorId}`)
       
-      // Mock data for now
-      const mockActivities: ActivityItem[] = [
-        {
-          id: '1',
-          person: params.person || 'testimg2_gnail_cm',
-          timestamp: new Date().toISOString(),
-          confidence: params.confidence || 0.991,
-          sensor: params.sensor,
-          source: 'sensor+watch'
-        },
-        {
-          id: '2',
-          person: 'capitalisandme_gmail_com',
-          timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-          confidence: 0.943,
-          sensor: params.sensor,
-          source: 'sensor_only'
-        },
-        {
-          id: '3',
-          person: 'jane_smith',
-          timestamp: new Date(Date.now() - 7200000).toISOString(), // 2 hours ago
-          confidence: 0.887,
-          sensor: params.sensor,
-          source: 'watch_only'
-        },
-      ]
-      
-      setActivities(mockActivities)
-      setSensorStatus('online')
+      // Load sensor info and recent events
+      await Promise.all([
+        loadSensorInfo(),
+        loadRecentEvents()
+      ])
       
     } catch (error) {
       console.error('❌ Error loading sensor data:', error)
-      setSensorStatus('error')
+      Alert.alert(
+        'Error',
+        'Failed to load sensor data. Please try again.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+    } finally {
+      setIsLoading(false)
+      setIsRefreshing(false)
     }
   }
 
-  const onRefresh = async () => {
-    setIsRefreshing(true)
-    await loadSensorData()
-    setIsRefreshing(false)
+  const loadSensorInfo = async () => {
+    try {
+      // For now, simulate sensor info since backend endpoint may not exist yet
+      const mockSensorInfo: SensorInfo = {
+        id: sensorId,
+        name: getSensorDisplayName(sensorId),
+        type: sensorId === 'mobile_app_sensor' ? 'Mobile Biometric' : 'mmWave Sensor',
+        location: sensorId === 'mobile_app_sensor' ? 'Mobile Device' : 'Entry Point',
+        status: 'online',
+        last_seen: new Date().toISOString(),
+        total_detections: 47,
+        accuracy_rate: 94.8
+      }
+      
+      setSensorInfo(mockSensorInfo)
+      console.log('✅ Sensor info loaded:', mockSensorInfo)
+      
+    } catch (error) {
+      console.error('❌ Error loading sensor info:', error)
+    }
+  }
+
+  const loadRecentEvents = async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/sensors/${sensorId}/events?limit=10`)
+      
+      if (response.ok) {
+        const events = await response.json()
+        setRecentEvents(events)
+        console.log(`✅ Loaded ${events.length} recent events`)
+      } else {
+        // Mock recent events if endpoint doesn't exist
+        const mockEvents: SensorEvent[] = [
+          {
+            id: '1',
+            person: 'testimg2_gnail_cm',
+            confidence: 99.4,
+            timestamp: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+            sensor_id: sensorId,
+            device_type: 'mobile',
+            source: 'dual_sensor',
+            location: 'Living Room',
+            heart_rate: 76.6,
+            heart_rate_wearable: 74,
+            breathing_rate: 16
+          },
+          {
+            id: '2',
+            person: 'teesting_hmali_com',
+            confidence: 87.3,
+            timestamp: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
+            sensor_id: sensorId,
+            device_type: 'mobile',
+            source: 'phone_only',
+            location: 'Kitchen',
+            heart_rate: 87.37,
+            breathing_rate: 16
+          },
+          {
+            id: '3',
+            person: 'unknown_person',
+            confidence: 45.2,
+            timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+            sensor_id: sensorId,
+            device_type: 'mobile',
+            source: 'phone_only',
+            location: 'Front Door',
+            heart_rate: 82.1,
+            breathing_rate: 18
+          }
+        ]
+        
+        setRecentEvents(mockEvents)
+        console.log('✅ Loaded mock recent events')
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading recent events:', error)
+    }
+  }
+
+  const getSensorDisplayName = (sensorId: string): string => {
+    switch (sensorId) {
+      case 'mobile_app_sensor':
+        return '📱 Mobile Biometric Sensor'
+      case 'entryway_1':
+        return '🚪 Front Door Sensor'
+      case 'living_room_1':
+        return '🛋️ Living Room Sensor'
+      default:
+        return `📡 ${sensorId}`
+    }
+  }
+
+  const getPersonDisplayName = (person: string): string => {
+    return person.replace(/_/g, ' ').replace(/gmail com|hmali com/g, '').trim() || person
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'online':
+        return '#10b981'
+      case 'warning':
+        return '#f59e0b'
+      case 'offline':
+        return '#ef4444'
+      default:
+        return '#64748b'
+    }
+  }
+
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 85) return '#10b981'
+    if (confidence >= 70) return '#f59e0b'
+    return '#ef4444'
   }
 
   const formatTimestamp = (timestamp: string) => {
     const date = new Date(timestamp)
     const now = new Date()
     const diffMs = now.getTime() - date.getTime()
-    const diffMins = Math.floor(diffMs / 60000)
+    const diffMins = Math.floor(diffMs / (1000 * 60))
     const diffHours = Math.floor(diffMins / 60)
     
     if (diffMins < 1) return 'Just now'
@@ -103,126 +220,162 @@ export default function SensorDetailScreen() {
     return date.toLocaleDateString()
   }
 
-  const getConfidenceColor = (confidence: number) => {
-    if (confidence >= 0.95) return '#10b981' // green
-    if (confidence >= 0.85) return '#f59e0b' // yellow
-    return '#ef4444' // red
-  }
-
-  const getSourceIcon = (source: string) => {
-    switch (source) {
-      case 'sensor+watch': return '📱⌚'
-      case 'watch_only': return '⌚'
-      case 'sensor_only': return '📱'
-      default: return '❓'
+  const testSensorConnection = async () => {
+    try {
+      console.log(`🧪 Testing connection to sensor: ${sensorId}`)
+      
+      Alert.alert(
+        '🧪 Sensor Test',
+        `Testing connection to ${sensorInfo?.name}...\n\nThis would ping the sensor and verify connectivity.`,
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+      
+    } catch (error) {
+      console.error('❌ Sensor test error:', error)
     }
   }
 
-  const getSensorIcon = (sensorName: string) => {
-    if (sensorName.includes('mobile')) return '📱'
-    if (sensorName.includes('front')) return '🚪'
-    if (sensorName.includes('back')) return '🏠'
-    if (sensorName.includes('garage')) return '🚗'
-    return '📡'
-  }
-
-  const handleTestNotification = () => {
-    Alert.alert(
-      'Test Notification',
-      `This would send a test Ring-style notification for ${params.sensor}`,
-      [{ text: 'OK' }]
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#10B981" />
+          <Text style={styles.loadingText}>Loading sensor data...</Text>
+        </View>
+      </SafeAreaView>
     )
   }
 
-  const renderSensorHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.sensorInfo}>
-        <Text style={styles.sensorIcon}>{getSensorIcon(params.sensor)}</Text>
-        <View style={styles.sensorDetails}>
-          <Text style={styles.sensorName}>{params.sensor.replace(/_/g, ' ')}</Text>
-          <View style={styles.statusContainer}>
-            <View style={[styles.statusDot, { backgroundColor: sensorStatus === 'online' ? '#10b981' : '#ef4444' }]} />
-            <Text style={styles.statusText}>{sensorStatus === 'online' ? 'Online' : 'Offline'}</Text>
-          </View>
-        </View>
-      </View>
-      
-      <TouchableOpacity style={styles.testButton} onPress={handleTestNotification}>
-        <Text style={styles.testButtonText}>🧪 Test</Text>
-      </TouchableOpacity>
-    </View>
-  )
-
-  const renderActivity = (activity: ActivityItem) => (
-    <View key={activity.id} style={styles.activityItem}>
-      <View style={styles.activityHeader}>
-        <View style={styles.activityInfo}>
-          <Text style={styles.activityPerson}>{activity.person}</Text>
-          <Text style={styles.activityTime}>{formatTimestamp(activity.timestamp)}</Text>
-        </View>
-        <View style={styles.activityMeta}>
-          <Text style={styles.sourceIcon}>{getSourceIcon(activity.source)}</Text>
-          <Text style={[styles.confidence, { color: getConfidenceColor(activity.confidence) }]}>
-            {Math.round(activity.confidence * 100)}%
-          </Text>
-        </View>
-      </View>
-      
-      <View style={styles.activityDetails}>
-        <Text style={styles.activitySource}>
-          Source: {activity.source.replace('+', ' + ').replace('_', ' ')}
-        </Text>
-      </View>
-    </View>
-  )
-
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl
-          refreshing={isRefreshing}
-          onRefresh={onRefresh}
-          tintColor="#3b82f6"
-        />
-      }
-    >
-      {renderSensorHeader()}
-      
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>{activities.length}</Text>
-          <Text style={styles.statLabel}>Detections Today</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => loadSensorData(true)}
+            tintColor="#10B981"
+          />
+        }
+      >
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>Sensor Details</Text>
+          <View style={styles.placeholder} />
         </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>99.1%</Text>
-          <Text style={styles.statLabel}>Avg Confidence</Text>
-        </View>
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>3</Text>
-          <Text style={styles.statLabel}>Unique People</Text>
-        </View>
-      </View>
-      
-      <View style={styles.sectionContainer}>
-        <Text style={styles.sectionTitle}>Recent Activity</Text>
-        {activities.length > 0 ? (
-          activities.map(renderActivity)
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No recent activity</Text>
-            <Text style={styles.emptySubtext}>Detections will appear here</Text>
+
+        {/* Sensor Info Card */}
+        {sensorInfo && (
+          <View style={styles.sensorCard}>
+            <View style={styles.sensorHeader}>
+              <View style={styles.sensorTitleContainer}>
+                <Text style={styles.sensorName}>{sensorInfo.name}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: getStatusColor(sensorInfo.status) }]}>
+                  <Text style={styles.statusText}>{sensorInfo.status.toUpperCase()}</Text>
+                </View>
+              </View>
+              <Text style={styles.sensorLocation}>📍 {sensorInfo.location}</Text>
+            </View>
+            
+            <View style={styles.sensorStats}>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{sensorInfo.total_detections}</Text>
+                <Text style={styles.statLabel}>Total Detections</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{sensorInfo.accuracy_rate}%</Text>
+                <Text style={styles.statLabel}>Accuracy Rate</Text>
+              </View>
+              <View style={styles.statItem}>
+                <Text style={styles.statValue}>{formatTimestamp(sensorInfo.last_seen)}</Text>
+                <Text style={styles.statLabel}>Last Seen</Text>
+              </View>
+            </View>
+            
+            <TouchableOpacity style={styles.testButton} onPress={testSensorConnection}>
+              <Text style={styles.testButtonText}>🧪 Test Connection</Text>
+            </TouchableOpacity>
           </View>
         )}
-      </View>
-      
-      <TouchableOpacity 
-        style={styles.settingsButton}
-        onPress={() => navigation.navigate('AutomationSettings' as never)}
-      >
-        <Text style={styles.settingsButtonText}>⚙️ Automation Settings</Text>
-      </TouchableOpacity>
-    </ScrollView>
+
+        {/* Recent Events */}
+        <View style={styles.eventsSection}>
+          <Text style={styles.eventsTitle}>📋 Recent Detection Events</Text>
+          
+          {recentEvents.length === 0 ? (
+            <View style={styles.noEventsContainer}>
+              <Text style={styles.noEventsText}>No recent events</Text>
+              <Text style={styles.noEventsSubtext}>Events will appear here when people are detected</Text>
+            </View>
+          ) : (
+            <View style={styles.eventsList}>
+              {recentEvents.map((event) => (
+                <View key={event.id} style={styles.eventCard}>
+                  <View style={styles.eventHeader}>
+                    <View style={styles.eventTitleContainer}>
+                      <Text style={styles.eventPerson}>
+                        👤 {getPersonDisplayName(event.person)}
+                      </Text>
+                      <View style={[
+                        styles.confidenceBadge, 
+                        { backgroundColor: getConfidenceColor(event.confidence) }
+                      ]}>
+                        <Text style={styles.confidenceText}>
+                          {event.confidence.toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.eventTimestamp}>
+                      🕐 {formatTimestamp(event.timestamp)}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.eventDetails}>
+                    <Text style={styles.eventDetail}>📡 Source: {event.source.replace('_', ' + ')}</Text>
+                    {event.location && (
+                      <Text style={styles.eventDetail}>📍 Location: {event.location}</Text>
+                    )}
+                    {event.heart_rate && (
+                      <Text style={styles.eventDetail}>💓 Heart Rate: {event.heart_rate} BPM</Text>
+                    )}
+                    {event.heart_rate_wearable && (
+                      <Text style={styles.eventDetail}>⌚ Watch HR: {event.heart_rate_wearable} BPM</Text>
+                    )}
+                    {event.breathing_rate && (
+                      <Text style={styles.eventDetail}>🫁 Breathing: {event.breathing_rate} BPM</Text>
+                    )}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Actions */}
+        <View style={styles.actionsSection}>
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => navigation.navigate('AutomationSettings' as never)}
+          >
+            <Text style={styles.actionButtonText}>⚙️ Automation Settings</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={styles.actionButton} 
+            onPress={() => loadSensorData(true)}
+          >
+            <Text style={styles.actionButtonText}>🔄 Refresh Data</Text>
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   )
 }
 
@@ -231,158 +384,192 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f172a',
   },
-  headerContainer: {
-    backgroundColor: '#1e293b',
+  content: {
+    flex: 1,
     padding: 20,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#94a3b8',
+    marginTop: 12,
+  },
+  header: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 20,
   },
-  sensorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
-  sensorIcon: {
-    fontSize: 32,
-    marginRight: 16,
+  backButtonText: {
+    fontSize: 16,
+    color: '#10b981',
+    fontWeight: '500',
   },
-  sensorDetails: {
-    flex: 1,
-  },
-  sensorName: {
+  title: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#ffffff',
-    textTransform: 'capitalize',
   },
-  statusContainer: {
+  placeholder: {
+    width: 60,
+  },
+  sensorCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+  },
+  sensorHeader: {
+    marginBottom: 16,
+  },
+  sensorTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginBottom: 8,
   },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
+  sensorName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#ffffff',
+  },
+  sensorLocation: {
     fontSize: 14,
     color: '#94a3b8',
   },
-  testButton: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  testButtonText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  statsContainer: {
+  sensorStats: {
     flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    margin: 20,
-    borderRadius: 12,
-    padding: 20,
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   statItem: {
-    flex: 1,
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
-    color: '#3b82f6',
+    color: '#10b981',
+    marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
     color: '#94a3b8',
-    marginTop: 4,
     textAlign: 'center',
   },
-  sectionContainer: {
-    margin: 20,
+  testButton: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
   },
-  sectionTitle: {
+  testButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  eventsSection: {
+    marginBottom: 20,
+  },
+  eventsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 16,
   },
-  activityItem: {
+  noEventsContainer: {
     backgroundColor: '#1e293b',
-    padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
-  },
-  activityHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    padding: 32,
     alignItems: 'center',
+  },
+  noEventsText: {
+    fontSize: 16,
+    color: '#94a3b8',
     marginBottom: 8,
   },
-  activityInfo: {
-    flex: 1,
+  noEventsSubtext: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
   },
-  activityPerson: {
+  eventsList: {
+    gap: 12,
+  },
+  eventCard: {
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    padding: 16,
+  },
+  eventHeader: {
+    marginBottom: 12,
+  },
+  eventTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  eventPerson: {
     fontSize: 16,
     fontWeight: '600',
     color: '#ffffff',
+    flex: 1,
   },
-  activityTime: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginTop: 2,
+  confidenceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  activityMeta: {
-    alignItems: 'flex-end',
-  },
-  sourceIcon: {
-    fontSize: 16,
-    marginBottom: 4,
-  },
-  confidence: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  activityDetails: {
-    marginTop: 8,
-  },
-  activitySource: {
+  confidenceText: {
     fontSize: 12,
-    color: '#64748b',
-    textTransform: 'capitalize',
+    fontWeight: '600',
+    color: '#ffffff',
   },
-  emptyContainer: {
-    backgroundColor: '#1e293b',
-    padding: 40,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#94a3b8',
-    marginBottom: 4,
-  },
-  emptySubtext: {
+  eventTimestamp: {
     fontSize: 14,
-    color: '#64748b',
+    color: '#94a3b8',
   },
-  settingsButton: {
+  eventDetails: {
+    gap: 4,
+  },
+  eventDetail: {
+    fontSize: 14,
+    color: '#94a3b8',
+  },
+  actionsSection: {
+    gap: 12,
+    marginBottom: 20,
+  },
+  actionButton: {
     backgroundColor: '#374151',
-    margin: 20,
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
   },
-  settingsButtonText: {
+  actionButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },
 })
+
+export default SensorDetailScreen

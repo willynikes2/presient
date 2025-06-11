@@ -1,222 +1,354 @@
-// screens/main/NotificationTestScreen.tsx - Ring-Style Notification Testing
-import React, { useState } from 'react'
+// Notification Test Screen - Ring-Style Testing
+// mobile/screens/main/NotificationTestScreen.tsx
+
+import React, { useState, useEffect } from 'react'
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
   Alert,
-  TextInput,
+  ActivityIndicator
 } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import { useAuth } from '../../contexts/AuthContext'
 import { useNotifications } from '../../contexts/NotificationContext'
 
-export default function NotificationTestScreen() {
+interface TestNotification {
+  id: string
+  title: string
+  body: string
+  person: string
+  sensor: string
+  confidence: number
+  description: string
+}
+
+const NotificationTestScreen = () => {
+  const navigation = useNavigation()
+  const { user } = useAuth()
   const { 
     expoPushToken, 
-    notificationsEnabled, 
-    sendTestNotification, 
-    enableNotifications,
-    sendDetectionNotification 
+    isNotificationEnabled, 
+    setupNotifications, 
+    sendTestNotification,
+    sendPresenceNotification 
   } = useNotifications()
   
-  const [testPerson, setTestPerson] = useState('testimg2_gnail_cm')
-  const [testSensor, setTestSensor] = useState('mobile_app_sensor')
-  const [testConfidence, setTestConfidence] = useState('99.1')
+  const [isSetupLoading, setIsSetupLoading] = useState(false)
 
-  const handleEnableNotifications = async () => {
-    const success = await enableNotifications()
-    if (success) {
-      Alert.alert('Success', 'Ring-style notifications enabled!')
-    } else {
-      Alert.alert('Error', 'Failed to enable notifications. Please check your device settings.')
+  // Test notification scenarios
+  const testNotifications: TestNotification[] = [
+    {
+      id: 'high_confidence',
+      title: '🏠 John Smith detected',
+      body: 'Recognized at Front Door with 95.8% confidence',
+      person: 'john_smith',
+      sensor: 'front_door_sensor',
+      confidence: 95.8,
+      description: 'High confidence detection - typical successful recognition'
+    },
+    {
+      id: 'family_member',
+      title: '🏠 Sarah detected',
+      body: 'Recognized at Living Room with 89.2% confidence',
+      person: 'sarah_jones',
+      sensor: 'living_room_sensor',
+      confidence: 89.2,
+      description: 'Family member detection with good confidence'
+    },
+    {
+      id: 'dual_sensor',
+      title: '🏠 Mike Johnson detected',
+      body: 'Recognized at Kitchen with 99.1% confidence (Dual-Sensor)',
+      person: 'mike_johnson',
+      sensor: 'kitchen_sensor',
+      confidence: 99.1,
+      description: 'Dual-sensor detection (Phone + Apple Watch) - highest accuracy'
+    },
+    {
+      id: 'mobile_app',
+      title: '🏠 testimg2_gnail_cm detected',
+      body: 'Recognized at Mobile Sensor with 97.4% confidence',
+      person: 'testimg2_gnail_cm',
+      sensor: 'mobile_app_sensor',
+      confidence: 97.4,
+      description: 'Mobile app biometric authentication - your actual user'
+    },
+    {
+      id: 'low_confidence',
+      title: '🏠 Unknown Person detected',
+      body: 'Unrecognized detection at Entry Point with 67.3% confidence',
+      person: 'unknown_person',
+      sensor: 'entry_sensor',
+      confidence: 67.3,
+      description: 'Low confidence detection - might not trigger automations'
+    },
+    {
+      id: 'watch_fallback',
+      title: '🏠 Emily Chen detected',
+      body: 'Recognized at Bedroom with 81.5% confidence (Apple Watch)',
+      person: 'emily_chen',
+      sensor: 'bedroom_sensor',
+      confidence: 81.5,
+      description: 'Apple Watch fallback when phone sensor unavailable'
+    }
+  ]
+
+  const setupRingNotifications = async () => {
+    try {
+      setIsSetupLoading(true)
+      console.log('🔔 Setting up Ring-style notifications...')
+      
+      const success = await setupNotifications()
+      
+      if (success) {
+        Alert.alert(
+          '✅ Notifications Ready!',
+          'Ring-style notifications are now enabled. You can test different scenarios below.',
+          [{ text: 'Great!' }],
+          { userInterfaceStyle: 'dark' }
+        )
+      }
+      
+    } catch (error) {
+      console.error('❌ Notification setup error:', error)
+      Alert.alert(
+        '❌ Setup Failed',
+        'Could not setup notifications. Please check permissions and try again.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+    } finally {
+      setIsSetupLoading(false)
     }
   }
 
-  const handleTestBasicNotification = async () => {
-    await sendTestNotification()
-    Alert.alert('Test Sent', 'Ring-style test notification sent!')
+  const sendTestNotificationScenario = async (notification: TestNotification) => {
+    try {
+      console.log(`🧪 Testing Ring-style notification: ${notification.id}`)
+      
+      await sendPresenceNotification(
+        notification.person,
+        notification.sensor,
+        notification.confidence
+      )
+      
+      Alert.alert(
+        '🔔 Notification Sent!',
+        `Ring-style notification sent for "${notification.person}". Check your notification tray!`,
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+      
+    } catch (error) {
+      console.error('❌ Test notification error:', error)
+      Alert.alert(
+        '❌ Test Failed',
+        'Could not send test notification. Please ensure notifications are enabled.',
+        [{ text: 'OK' }],
+        { userInterfaceStyle: 'dark' }
+      )
+    }
   }
 
-  const handleTestDetectionNotification = async () => {
-    const confidence = parseFloat(testConfidence) / 100
-    await sendDetectionNotification(testPerson, testSensor, confidence)
-    Alert.alert('Detection Test', 'Ring-style detection notification sent!')
+  const sendQuickTest = async () => {
+    try {
+      await sendTestNotification()
+    } catch (error) {
+      console.error('❌ Quick test error:', error)
+    }
   }
 
-  const handleTestScenarios = () => {
-    Alert.alert(
-      'Test Scenarios',
-      'Choose a scenario to test:',
-      [
-        {
-          text: 'High Confidence (95%)',
-          onPress: () => sendDetectionNotification('john_smith', 'front_door_sensor', 0.95)
-        },
-        {
-          text: 'Medium Confidence (85%)',
-          onPress: () => sendDetectionNotification('jane_doe', 'back_door_sensor', 0.85)
-        },
-        {
-          text: 'Low Confidence (75%)',
-          onPress: () => sendDetectionNotification('unknown_person', 'garage_sensor', 0.75)
-        },
-        { text: 'Cancel', style: 'cancel' }
-      ]
-    )
+  const navigateToSensorDetail = (sensorId: string) => {
+    // Simulate notification tap navigation
+    navigation.navigate('SensorDetail' as never, { sensor: sensorId } as never)
   }
 
-  const renderStatus = () => (
-    <View style={styles.statusContainer}>
-      <Text style={styles.sectionTitle}>📱 Notification Status</Text>
-      
-      <View style={styles.statusRow}>
-        <Text style={styles.statusLabel}>Notifications Enabled:</Text>
-        <Text style={[styles.statusValue, { color: notificationsEnabled ? '#10b981' : '#ef4444' }]}>
-          {notificationsEnabled ? '✅ Yes' : '❌ No'}
-        </Text>
-      </View>
-      
-      <View style={styles.statusRow}>
-        <Text style={styles.statusLabel}>Push Token:</Text>
-        <Text style={styles.statusValue}>
-          {expoPushToken ? '✅ Generated' : '❌ Missing'}
-        </Text>
-      </View>
-      
-      {expoPushToken && (
-        <View style={styles.tokenContainer}>
-          <Text style={styles.tokenLabel}>Token (for backend):</Text>
-          <Text style={styles.tokenValue} numberOfLines={3}>
-            {expoPushToken}
-          </Text>
-        </View>
-      )}
-    </View>
-  )
-
-  const renderBasicTests = () => (
-    <View style={styles.testContainer}>
-      <Text style={styles.sectionTitle}>🧪 Basic Tests</Text>
-      
-      {!notificationsEnabled ? (
-        <TouchableOpacity style={styles.enableButton} onPress={handleEnableNotifications}>
-          <Text style={styles.enableButtonText}>🔔 Enable Ring-Style Notifications</Text>
-        </TouchableOpacity>
-      ) : (
-        <>
-          <TouchableOpacity style={styles.testButton} onPress={handleTestBasicNotification}>
-            <Text style={styles.testButtonText}>📨 Send Test Notification</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.testButton} onPress={handleTestScenarios}>
-            <Text style={styles.testButtonText}>🎭 Test Scenarios</Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </View>
-  )
-
-  const renderCustomTest = () => (
-    <View style={styles.customContainer}>
-      <Text style={styles.sectionTitle}>⚙️ Custom Detection Test</Text>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Person ID:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={testPerson}
-          onChangeText={setTestPerson}
-          placeholder="testimg2_gnail_cm"
-          placeholderTextColor="#64748b"
-        />
-      </View>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Sensor:</Text>
-        <TextInput
-          style={styles.textInput}
-          value={testSensor}
-          onChangeText={setTestSensor}
-          placeholder="mobile_app_sensor"
-          placeholderTextColor="#64748b"
-        />
-      </View>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Confidence (%):</Text>
-        <TextInput
-          style={styles.textInput}
-          value={testConfidence}
-          onChangeText={setTestConfidence}
-          placeholder="99.1"
-          placeholderTextColor="#64748b"
-          keyboardType="numeric"
-        />
-      </View>
-      
-      <TouchableOpacity 
-        style={[styles.testButton, !notificationsEnabled && styles.disabledButton]} 
-        onPress={handleTestDetectionNotification}
-        disabled={!notificationsEnabled}
-      >
-        <Text style={[styles.testButtonText, !notificationsEnabled && styles.disabledText]}>
-          🚀 Send Custom Detection
-        </Text>
-      </TouchableOpacity>
-    </View>
-  )
-
-  const renderExpectedBehavior = () => (
-    <View style={styles.infoContainer}>
-      <Text style={styles.sectionTitle}>💡 Expected Behavior</Text>
-      
-      <Text style={styles.infoText}>
-        <Text style={styles.bold}>Ring-Style Notifications:</Text>
-      </Text>
-      <Text style={styles.infoText}>• Show even when app is closed</Text>
-      <Text style={styles.infoText}>• Play notification sound</Text>
-      <Text style={styles.infoText}>• Display confidence percentage</Text>
-      <Text style={styles.infoText}>• Tap to open sensor detail screen</Text>
-      
-      <Text style={styles.infoText}>
-        <Text style={styles.bold}>Notification Format:</Text>
-      </Text>
-      <Text style={styles.infoText}>🔍 [person] detected</Text>
-      <Text style={styles.infoText}>Recognized at [sensor] with [confidence]% confidence</Text>
-      
-      <Text style={styles.infoText}>
-        <Text style={styles.bold}>Navigation:</Text>
-      </Text>
-      <Text style={styles.infoText}>• Tap notification → Opens sensor detail screen</Text>
-      <Text style={styles.infoText}>• Shows detection history and statistics</Text>
-    </View>
-  )
+  const getConfidenceColor = (confidence: number) => {
+    if (confidence >= 90) return '#10b981'
+    if (confidence >= 80) return '#3b82f6'
+    if (confidence >= 70) return '#f59e0b'
+    return '#ef4444'
+  }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>🔔 Ring-Style Notifications</Text>
-        <Text style={styles.subtitle}>
-          Test the complete notification experience. This is how we beat Ring!
-        </Text>
-      </View>
-      
-      {renderStatus()}
-      {renderBasicTests()}
-      {renderCustomTest()}
-      {renderExpectedBehavior()}
-      
-      <View style={styles.footerContainer}>
-        <Text style={styles.footerTitle}>🎯 Integration Ready</Text>
-        <Text style={styles.footerText}>
-          Once notifications work here, your backend can send real Ring-style notifications when biometric authentication succeeds.
-        </Text>
-        <Text style={styles.footerText}>
-          Expected flow: Authentication → MQTT → Home Assistant → Shield + Push Notification
-        </Text>
-      </View>
-    </ScrollView>
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Text style={styles.backButtonText}>← Back</Text>
+          </TouchableOpacity>
+          <Text style={styles.title}>🔔 Ring-Style Notifications</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        {/* Setup Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>⚙️ Notification Setup</Text>
+          <Text style={styles.sectionDescription}>
+            Enable Ring-style push notifications for presence detection events.
+          </Text>
+          
+          <View style={styles.statusContainer}>
+            <View style={styles.statusRow}>
+              <Text style={styles.statusLabel}>Status:</Text>
+              <Text style={[
+                styles.statusValue,
+                { color: isNotificationEnabled ? '#10b981' : '#f59e0b' }
+              ]}>
+                {isNotificationEnabled ? '✅ Enabled' : '⚠️ Setup Required'}
+              </Text>
+            </View>
+            
+            {expoPushToken && (
+              <View style={styles.statusRow}>
+                <Text style={styles.statusLabel}>Push Token:</Text>
+                <Text style={styles.statusValue}>
+                  {expoPushToken.substring(0, 20)}...
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {!isNotificationEnabled && (
+            <TouchableOpacity
+              style={[styles.setupButton, isSetupLoading && styles.setupButtonDisabled]}
+              onPress={setupRingNotifications}
+              disabled={isSetupLoading}
+            >
+              {isSetupLoading ? (
+                <ActivityIndicator color="#ffffff" />
+              ) : (
+                <Text style={styles.setupButtonText}>🚀 Enable Ring Notifications</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Quick Test */}
+        {isNotificationEnabled && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>⚡ Quick Test</Text>
+            <Text style={styles.sectionDescription}>
+              Send a basic test notification to verify everything is working.
+            </Text>
+            
+            <TouchableOpacity style={styles.quickTestButton} onPress={sendQuickTest}>
+              <Text style={styles.quickTestButtonText}>🧪 Send Quick Test</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Test Scenarios */}
+        {isNotificationEnabled && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>🎭 Test Scenarios</Text>
+            <Text style={styles.sectionDescription}>
+              Test different Ring-style notification scenarios to see how they appear.
+            </Text>
+            
+            <View style={styles.scenariosList}>
+              {testNotifications.map((notification) => (
+                <View key={notification.id} style={styles.scenarioCard}>
+                  <View style={styles.scenarioHeader}>
+                    <Text style={styles.scenarioTitle}>{notification.title}</Text>
+                    <View style={[
+                      styles.confidenceBadge,
+                      { backgroundColor: getConfidenceColor(notification.confidence) }
+                    ]}>
+                      <Text style={styles.confidenceText}>
+                        {notification.confidence.toFixed(1)}%
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <Text style={styles.scenarioBody}>{notification.body}</Text>
+                  <Text style={styles.scenarioDescription}>{notification.description}</Text>
+                  
+                  <View style={styles.scenarioActions}>
+                    <TouchableOpacity
+                      style={styles.testButton}
+                      onPress={() => sendTestNotificationScenario(notification)}
+                    >
+                      <Text style={styles.testButtonText}>📤 Send Test</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={styles.previewButton}
+                      onPress={() => navigateToSensorDetail(notification.sensor)}
+                    >
+                      <Text style={styles.previewButtonText}>👁️ Preview Detail</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Ring-Style Features */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>🔥 Ring-Style Features</Text>
+          <View style={styles.featuresList}>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>📱</Text>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle}>Instant Notifications</Text>
+                <Text style={styles.featureDescription}>
+                  Get notified the moment family members are detected
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>👆</Text>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle}>Tap to View Details</Text>
+                <Text style={styles.featureDescription}>
+                  Tap notifications to see sensor data and recent activity
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>🎯</Text>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle}>Confidence Scoring</Text>
+                <Text style={styles.featureDescription}>
+                  See authentication confidence for each detection
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>⚙️</Text>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureTitle}>Smart Automation</Text>
+                <Text style={styles.featureDescription}>
+                  Integrates with Home Assistant for device control
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Navigation */}
+        <View style={styles.navigationSection}>
+          <TouchableOpacity
+            style={styles.navButton}
+            onPress={() => navigation.navigate('AutomationSettings' as never)}
+          >
+            <Text style={styles.navButtonText}>⚙️ Automation Settings</Text>
+          </TouchableOpacity>
+        </View>
+
+      </ScrollView>
+    </SafeAreaView>
   )
 }
 
@@ -225,162 +357,207 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0f172a',
   },
-  headerContainer: {
+  content: {
+    flex: 1,
     padding: 20,
-    backgroundColor: '#1e293b',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  backButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  backButtonText: {
+    fontSize: 16,
+    color: '#10b981',
+    fontWeight: '500',
   },
   title: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 8,
   },
-  subtitle: {
-    fontSize: 16,
-    color: '#94a3b8',
-    lineHeight: 22,
+  placeholder: {
+    width: 60,
   },
-  statusContainer: {
+  section: {
+    marginBottom: 24,
     backgroundColor: '#1e293b',
-    margin: 20,
+    borderRadius: 16,
     padding: 20,
-    borderRadius: 12,
-  },
-  testContainer: {
-    backgroundColor: '#1e293b',
-    margin: 20,
-    marginTop: 0,
-    padding: 20,
-    borderRadius: 12,
-  },
-  customContainer: {
-    backgroundColor: '#1e293b',
-    margin: 20,
-    marginTop: 0,
-    padding: 20,
-    borderRadius: 12,
-  },
-  infoContainer: {
-    backgroundColor: '#1e293b',
-    margin: 20,
-    marginTop: 0,
-    padding: 20,
-    borderRadius: 12,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#ffffff',
+    marginBottom: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: '#94a3b8',
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  statusContainer: {
+    backgroundColor: '#374151',
+    borderRadius: 8,
+    padding: 12,
     marginBottom: 16,
   },
   statusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   statusLabel: {
-    fontSize: 16,
-    color: '#e2e8f0',
+    fontSize: 14,
+    color: '#9ca3af',
   },
   statusValue: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  setupButton: {
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  setupButtonDisabled: {
+    backgroundColor: '#64748b',
+  },
+  setupButtonText: {
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
   },
-  tokenContainer: {
-    marginTop: 16,
-    padding: 16,
+  quickTestButton: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  quickTestButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scenariosList: {
+    gap: 12,
+  },
+  scenarioCard: {
     backgroundColor: '#374151',
+    borderRadius: 12,
+    padding: 16,
+  },
+  scenarioHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  scenarioTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    flex: 1,
+  },
+  confidenceBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 8,
   },
-  tokenLabel: {
-    fontSize: 14,
+  confidenceText: {
+    fontSize: 12,
     fontWeight: '600',
+    color: '#ffffff',
+  },
+  scenarioBody: {
+    fontSize: 14,
     color: '#e2e8f0',
     marginBottom: 8,
   },
-  tokenValue: {
+  scenarioDescription: {
     fontSize: 12,
-    color: '#94a3b8',
-    fontFamily: 'monospace',
+    color: '#9ca3af',
+    marginBottom: 12,
   },
-  enableButton: {
-    backgroundColor: '#3b82f6',
+  scenarioActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  testButton: {
+    flex: 1,
+    backgroundColor: '#10b981',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  testButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  previewButton: {
+    flex: 1,
+    backgroundColor: '#6366f1',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+  },
+  previewButtonText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  featuresList: {
+    gap: 16,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  featureIcon: {
+    fontSize: 24,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  featureContent: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffffff',
+    marginBottom: 4,
+  },
+  featureDescription: {
+    fontSize: 14,
+    color: '#94a3b8',
+    lineHeight: 18,
+  },
+  navigationSection: {
+    marginBottom: 20,
+  },
+  navButton: {
+    backgroundColor: '#374151',
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
     alignItems: 'center',
   },
-  enableButtonText: {
+  navButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
-  },
-  testButton: {
-    backgroundColor: '#10b981',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  testButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  disabledButton: {
-    backgroundColor: '#374151',
-  },
-  disabledText: {
-    color: '#94a3b8',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#e2e8f0',
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: '#374151',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    fontSize: 16,
-    color: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#475569',
-  },
-  infoText: {
-    fontSize: 14,
-    color: '#94a3b8',
-    marginBottom: 6,
-    lineHeight: 20,
-  },
-  bold: {
-    fontWeight: 'bold',
-    color: '#e2e8f0',
-  },
-  footerContainer: {
-    backgroundColor: '#065f46',
-    margin: 20,
-    marginTop: 0,
-    padding: 20,
-    borderRadius: 12,
-  },
-  footerTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginBottom: 12,
-  },
-  footerText: {
-    fontSize: 14,
-    color: '#d1fae5',
-    marginBottom: 8,
-    lineHeight: 20,
   },
 })
+
+export default NotificationTestScreen

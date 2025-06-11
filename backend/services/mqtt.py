@@ -39,7 +39,6 @@ class MQTTPublisher:
             try:
                 # ✅ Fixed: Correct syntax for paho-mqtt 2.1.0
                 self.client = mqtt.Client(
-                    callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
                     client_id=self.client_id
                 )
                 self.client.on_connect = self._on_connect
@@ -144,7 +143,7 @@ class MQTTPublisher:
                 "user_id": event.user_id,
                 "confidence": event.confidence,
                 "location": "entrance",  # Default location
-                "timestamp": event.timestamp.isoformat() if event.timestamp else datetime.now().isoformat(),
+                "timestamp": event.timestamp.isoformat() if event.timestamp is not None else datetime.now().isoformat(),
                 "heart_rate": getattr(event, 'heart_rate', None),
                 "breathing_rate": getattr(event, 'breathing_rate', 16),
                 "device_id": "presient_sensor_01",
@@ -171,7 +170,7 @@ class MQTTPublisher:
                     "user_id": event.user_id,
                     "sensor_id": event.sensor_id,
                     "confidence": event.confidence,
-                    "timestamp": event.timestamp.isoformat() if event.timestamp else None,
+                    "timestamp": event.timestamp.isoformat() if event.timestamp is not None else None,
                     "detected": event.confidence > 0.7
                 }),
                 retain=False
@@ -179,11 +178,21 @@ class MQTTPublisher:
             
             # NVIDIA Shield specific trigger for certain users
             shield_users = ["capitalisandme_gmail_com", "testimg2_gnail_cm", "jane_smith"]
-            if event.user_id in shield_users and event.confidence > 0.80:  # Lowered threshold to 0.80
+            shield_trigger = False
+            if event.user_id in shield_users and event.confidence is not None:
+                # If event.confidence is a SQLAlchemy ColumnElement, use .is_(True)
+                if hasattr(event.confidence, "is_"):
+                    shield_trigger = event.confidence.is_(True)
+                else:
+                    shield_trigger = event.confidence > 0.80
+
+            # Avoid using SQLAlchemy expressions directly in if statements
+            should_trigger = bool(shield_trigger)
+            if should_trigger:
                 shield_data = {
                     "action": "turn_on_shield",
                     "user": event.user_id,
-                    "confidence": event.confidence,
+                    "confidence": float(event.confidence) if hasattr(event.confidence, "__float__") else event.confidence,
                     "timestamp": datetime.now().isoformat()
                 }
                 await self.publish(
