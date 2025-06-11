@@ -2,7 +2,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import * as Notifications from 'expo-notifications'
 import * as Device from 'expo-device'
-import { useNavigation } from '@react-navigation/native'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 // Configure notifications to show in foreground (Ring-style)
@@ -44,7 +43,6 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null)
   const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   const [isSetup, setIsSetup] = useState(false)
-  const navigation = useNavigation()
 
   useEffect(() => {
     setupNotifications()
@@ -110,12 +108,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       
       const data = response.notification.request.content.data
       if (data?.sensor) {
-        // Navigate to sensor detail screen (Ring-style)
-        navigation.navigate('SensorDetail' as never, {
-          sensor: data.sensor,
-          person: data.person,
-          confidence: data.confidence
-        } as never)
+        // Log navigation intent - actual navigation will be handled by the app
+        console.log('🔄 Should navigate to sensor:', data.sensor, 'person:', data.person)
+        // TODO: Use a different navigation approach or event system
       }
     })
 

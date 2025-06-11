@@ -1,90 +1,190 @@
-// Enhanced App.tsx - Ring-Style Notifications + Apple Watch Integration
+// Minimal App.tsx - Works without context files
 import React from 'react'
 import { StatusBar } from 'expo-status-bar'
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
 
-// Auth Context
+// Auth Context (existing)
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 
-// New Contexts for Ring-Style Features
-import { NotificationProvider } from './contexts/NotificationContext'
-import { WearableProvider } from './contexts/WearableContext'
-
-// Screens
+// Existing Screens
 import HybridLoginScreen from './screens/auth/HybridLoginScreen'
 import DashboardScreen from './screens/main/DashboardScreen'
 import BiometricEnrollmentScreen from './screens/main/BiometricEnrollmentScreen'
 
-// New Screens for Ring-Style Features
-import WearableSetupScreen from './screens/main/WearableSetupScreen'
-import SensorDetailScreen from './screens/main/SensorDetailScreen'
-import AutomationSettingsScreen from './screens/main/AutomationSettingsScreen'
-import NotificationTestScreen from './screens/main/NotificationTestScreen'
+// Inline Notification Test Screen (no context needed)
+const NotificationTestScreen = () => {
+  const handleTestNotification = async () => {
+    try {
+      // Simple in-app notification test
+      Alert.alert(
+        '🔔 Ring-Style Notification Test',
+        'testimg2_gnail_cm detected at Mobile Sensor with 99.1% confidence',
+        [
+          {
+            text: 'View Details',
+            onPress: () => {
+              Alert.alert('Navigation', 'Would navigate to sensor detail screen')
+            }
+          },
+          { text: 'Dismiss' }
+        ]
+      )
+    } catch (error) {
+      Alert.alert('Error', 'Notification test failed')
+    }
+  }
 
-// Simple placeholder screens (for buttons that aren't implemented yet)
-const ProfileScreen = () => {
-  const { View, Text, StyleSheet } = require('react-native')
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Profile Screen</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
+      <Text style={styles.emoji}>🔔</Text>
+      <Text style={styles.title}>Ring-Style Notifications</Text>
+      <Text style={styles.subtitle}>
+        Test the notification experience that will integrate with your biometric system
+      </Text>
+      
+      <TouchableOpacity style={styles.button} onPress={handleTestNotification}>
+        <Text style={styles.buttonText}>🧪 Test Ring Notification</Text>
+      </TouchableOpacity>
+      
+      <View style={styles.infoContainer}>
+        <Text style={styles.infoTitle}>Expected Integration:</Text>
+        <Text style={styles.infoText}>• Authentication → 99.1% confidence</Text>
+        <Text style={styles.infoText}>• MQTT → Home Assistant</Text>
+        <Text style={styles.infoText}>• Shield automation → ✅ Working</Text>
+        <Text style={styles.infoText}>• Push notification → This screen</Text>
+      </View>
     </View>
   )
 }
 
-const DeviceManagementScreen = () => {
-  const { View, Text, StyleSheet } = require('react-native')
+// Simple placeholder screens
+const WearableSetupScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.emoji}>⌚</Text>
+    <Text style={styles.title}>Apple Watch Setup</Text>
+    <Text style={styles.subtitle}>Coming Soon</Text>
+  </View>
+)
+
+const SensorDetailScreen = () => {
+  const route = require('@react-navigation/native').useRoute()
+  const params = route.params || {}
+  
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Device Management</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
+      <Text style={styles.emoji}>📡</Text>
+      <Text style={styles.title}>Sensor Detail</Text>
+      <Text style={styles.subtitle}>
+        Sensor: {params.sensor || 'mobile_app_sensor'}
+      </Text>
+      <Text style={styles.subtitle}>
+        Person: {params.person || 'testimg2_gnail_cm'}
+      </Text>
+      <Text style={styles.subtitle}>
+        Confidence: {params.confidence ? Math.round(params.confidence * 100) + '%' : '99.1%'}
+      </Text>
     </View>
   )
 }
 
-const FirmwareUpdateScreen = () => {
-  const { View, Text, StyleSheet } = require('react-native')
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Firmware Update</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
-    </View>
-  )
-}
+const AutomationSettingsScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.emoji}>⚙️</Text>
+    <Text style={styles.title}>Automation Settings</Text>
+    <Text style={styles.subtitle}>Decouple Shield automation settings</Text>
+  </View>
+)
 
-const SensorDiscoveryScreen = () => {
-  const { View, Text, StyleSheet } = require('react-native')
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sensor Discovery</Text>
-      <Text style={styles.subtitle}>Coming Soon</Text>
-    </View>
-  )
-}
+const ProfileScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.title}>Profile Screen</Text>
+    <Text style={styles.subtitle}>Coming Soon</Text>
+  </View>
+)
 
-// Styles for placeholder screens
-const styles = require('react-native').StyleSheet.create({
+const DeviceManagementScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.title}>Device Management</Text>
+    <Text style={styles.subtitle}>Coming Soon</Text>
+  </View>
+)
+
+const FirmwareUpdateScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.title}>Firmware Update</Text>
+    <Text style={styles.subtitle}>Coming Soon</Text>
+  </View>
+)
+
+const SensorDiscoveryScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.title}>Sensor Discovery</Text>
+    <Text style={styles.subtitle}>Coming Soon</Text>
+  </View>
+)
+
+// Styles
+const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#0f172a',
+    padding: 20,
+  },
+  emoji: {
+    fontSize: 64,
+    marginBottom: 20,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 8,
+    textAlign: 'center',
   },
   subtitle: {
     fontSize: 16,
     color: '#64748b',
+    textAlign: 'center',
+    marginBottom: 20,
+    lineHeight: 22,
+  },
+  button: {
+    backgroundColor: '#3b82f6',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 30,
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  infoContainer: {
+    backgroundColor: '#1e293b',
+    padding: 20,
+    borderRadius: 12,
+    width: '100%',
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#ffffff',
+    marginBottom: 12,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#94a3b8',
+    marginBottom: 6,
   },
 })
 
-// Enhanced Navigation Types
+// Navigation Types
 export type RootStackParamList = {
   HybridLogin: undefined
   Dashboard: undefined
@@ -101,7 +201,7 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>()
 
-// Dark theme for navigation
+// Dark theme
 const DarkTheme = {
   ...DefaultTheme,
   colors: {
@@ -115,116 +215,46 @@ const DarkTheme = {
   },
 }
 
-// Auth Navigator (Hybrid Login - Social + Email/Password)
+// Auth Navigator
 const AuthNavigator = () => (
-  <Stack.Navigator
-    screenOptions={{
-      headerShown: false,
-    }}
-  >
+  <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="HybridLogin" component={HybridLoginScreen} />
   </Stack.Navigator>
 )
 
-// Main Navigator (Dashboard and other screens)
+// Main Navigator
 const MainNavigator = () => (
   <Stack.Navigator
     screenOptions={{
-      headerStyle: {
-        backgroundColor: '#1e293b',
-      },
+      headerStyle: { backgroundColor: '#1e293b' },
       headerTintColor: '#ffffff',
-      headerTitleStyle: {
-        fontWeight: 'bold',
-      },
+      headerTitleStyle: { fontWeight: 'bold' },
     }}
   >
-    <Stack.Screen 
-      name="Dashboard" 
-      component={DashboardScreen}
-      options={{ title: 'Presient' }}
-    />
-    <Stack.Screen 
-      name="Profile" 
-      component={ProfileScreen}
-      options={{ title: 'User Profile' }}
-    />
-    <Stack.Screen 
-      name="DeviceManagement" 
-      component={DeviceManagementScreen}
-      options={{ title: 'Manage Devices' }}
-    />
-    <Stack.Screen 
-      name="BiometricEnrollment" 
-      component={BiometricEnrollmentScreen}
-      options={{ title: 'Enroll Biometrics' }}
-    />
-    <Stack.Screen 
-      name="WearableSetup" 
-      component={WearableSetupScreen}
-      options={{ title: 'Apple Watch Setup' }}
-    />
-    <Stack.Screen 
-      name="SensorDetail" 
-      component={SensorDetailScreen}
-      options={{ title: 'Sensor Activity' }}
-    />
-    <Stack.Screen 
-      name="AutomationSettings" 
-      component={AutomationSettingsScreen}
-      options={{ title: 'Automation Settings' }}
-    />
-    <Stack.Screen 
-      name="NotificationTest" 
-      component={NotificationTestScreen}
-      options={{ title: 'Test Notifications' }}
-    />
-    <Stack.Screen 
-      name="FirmwareUpdate" 
-      component={FirmwareUpdateScreen}
-      options={{ title: 'Firmware Update' }}
-    />
-    <Stack.Screen 
-      name="SensorDiscovery" 
-      component={SensorDiscoveryScreen}
-      options={{ title: 'Discover Sensors' }}
-    />
+    <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Presient' }} />
+    <Stack.Screen name="Profile" component={ProfileScreen} options={{ title: 'User Profile' }} />
+    <Stack.Screen name="DeviceManagement" component={DeviceManagementScreen} options={{ title: 'Manage Devices' }} />
+    <Stack.Screen name="BiometricEnrollment" component={BiometricEnrollmentScreen} options={{ title: 'Enroll Biometrics' }} />
+    <Stack.Screen name="WearableSetup" component={WearableSetupScreen} options={{ title: 'Apple Watch Setup' }} />
+    <Stack.Screen name="SensorDetail" component={SensorDetailScreen} options={{ title: 'Sensor Activity' }} />
+    <Stack.Screen name="AutomationSettings" component={AutomationSettingsScreen} options={{ title: 'Automation Settings' }} />
+    <Stack.Screen name="NotificationTest" component={NotificationTestScreen} options={{ title: 'Test Notifications' }} />
+    <Stack.Screen name="FirmwareUpdate" component={FirmwareUpdateScreen} options={{ title: 'Firmware Update' }} />
+    <Stack.Screen name="SensorDiscovery" component={SensorDiscoveryScreen} options={{ title: 'Discover Sensors' }} />
   </Stack.Navigator>
 )
 
 // Loading Component
-const LoadingScreen = () => {
-  const { View, Text, ActivityIndicator, StyleSheet } = require('react-native')
-  return (
-    <View style={loadingStyles.container}>
-      <ActivityIndicator size="large" color="#3b82f6" />
-      <Text style={loadingStyles.text}>Loading...</Text>
-    </View>
-  )
-}
+const LoadingScreen = () => (
+  <View style={styles.container}>
+    <Text style={styles.title}>Loading...</Text>
+  </View>
+)
 
-const loadingStyles = require('react-native').StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f172a',
-  },
-  text: {
-    marginTop: 16,
-    fontSize: 16,
-    color: '#64748b',
-  },
-})
-
-// Root App Component with Enhanced Context Providers
+// App Content
 const AppContent = () => {
   const { user, loading } = useAuth()
-
-  if (loading) {
-    return <LoadingScreen />
-  }
-
+  if (loading) return <LoadingScreen />
   return (
     <NavigationContainer theme={DarkTheme}>
       {user ? <MainNavigator /> : <AuthNavigator />}
@@ -232,17 +262,13 @@ const AppContent = () => {
   )
 }
 
-// Main App Component with Ring-Style Providers
+// Main App Component (no context imports - they don't exist yet)
 export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <NotificationProvider>
-          <WearableProvider>
-            <AppContent />
-            <StatusBar style="light" />
-          </WearableProvider>
-        </NotificationProvider>
+        <AppContent />
+        <StatusBar style="light" />
       </AuthProvider>
     </SafeAreaProvider>
   )

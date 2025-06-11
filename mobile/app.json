@@ -2,7 +2,7 @@
   "expo": {
     "name": "Presient",
     "slug": "presient",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "scheme": "presient",
@@ -10,14 +10,27 @@
     "notifications": {
       "color": "#007AFF",
       "sounds": ["default"],
-      "iosDisplayInForeground": true
+      "iosDisplayInForeground": true,
+      "androidMode": "default",
+      "androidCollapsedTitle": "Presient Detection"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourname.presient",
+      "buildNumber": "2.0.0",
       "infoPlist": {
-        "NSHealthShareUsageDescription": "Presient uses Health data for biometric authentication and heart rate monitoring",
-        "NSHealthUpdateUsageDescription": "Presient stores biometric patterns for secure authentication"
+        "NSHealthShareUsageDescription": "Presient uses Health data for enhanced biometric authentication and fallback support. Heart rate data improves accuracy and provides backup authentication when the primary sensor is unavailable.",
+        "NSHealthUpdateUsageDescription": "Presient accesses heart rate data to improve authentication accuracy and enable dual-sensor biometric matching with Apple Watch.",
+        "NSCameraUsageDescription": "Presient uses the camera to capture heart rate data for biometric authentication.",
+        "NSMicrophoneUsageDescription": "Presient may use microphone for enhanced biometric data collection.",
+        "NSLocationWhenInUseUsageDescription": "Presient uses location to enhance security and provide context for presence detection.",
+        "UIBackgroundModes": ["background-processing", "background-fetch"]
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": [
+          "health-records"
+        ]
       }
     },
     "android": {
@@ -25,17 +38,49 @@
         "backgroundColor": "#0f172a"
       },
       "package": "com.yourname.presient",
+      "versionCode": 2,
       "useNextNotificationsApi": true,
       "permissions": [
         "android.permission.VIBRATE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
     },
     "plugins": [
       "expo-secure-store",
       "expo-web-browser",
-      "expo-notifications"
-    ]
+      "expo-notifications",
+      [
+        "react-native-health",
+        {
+          "healthSharePermission": "This app needs access to read heart rate data for enhanced biometric authentication and dual-sensor support with Apple Watch.",
+          "healthUpdatePermission": "This app accesses heart rate data to improve authentication accuracy with Apple Watch integration."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Presient uses camera for heart rate detection and biometric authentication."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id-here"
+      }
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    }
   }
 }

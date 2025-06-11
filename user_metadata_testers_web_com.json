@@ -1,0 +1,10 @@
+{
+  "user_id": "testers_web_com",
+  "display_name": "test 8",
+  "location": "bedroom",
+  "enrolled_at": "2025-06-07T14:45:11.766953",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}
