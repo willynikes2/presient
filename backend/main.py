@@ -50,12 +50,27 @@ from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
 # Import SQLite biometric matcher
 from backend.utils.biometric_matcher import SQLiteBiometricMatcher, load_profiles_from_db
 
-# *** NEW: Import MR60BHA2 sensor integration ***
-from backend.services.mqtt_subscriber import (
-    startup_mr60bha2_integration, 
-    shutdown_mr60bha2_integration,
-    get_mr60bha2_status
-)
+# *** MR60BHA2 sensor integration - Stub implementations until module is created ***
+async def startup_mr60bha2_integration(biometric_matcher=None, mqtt_publisher=None, notification_system=None):
+    """Stub implementation for MR60BHA2 integration startup"""
+    logger.info("📡 MR60BHA2 integration module not yet implemented - using stub")
+    return True
+
+async def shutdown_mr60bha2_integration():
+    """Stub implementation for MR60BHA2 integration shutdown"""
+    logger.info("📡 MR60BHA2 integration shutdown (stub)")
+    return True
+
+def get_mr60bha2_status():
+    """Stub implementation for MR60BHA2 status"""
+    return {
+        "connected": False,
+        "status": "not_implemented",
+        "buffer_size": 0,
+        "presence_detected": False,
+        "topics": {},
+        "note": "MR60BHA2 integration module not yet implemented"
+    }
 
 # Configure logging to stdout
 logging.basicConfig(
@@ -472,7 +487,7 @@ async def trigger_presence_notification(person: str, confidence: float, sensor_i
                 logger.error(f"❌ Failed to send notification to {person}: {result.get('error')}")
         
         # Enhanced MQTT payload for Home Assistant (Build Note 2 architecture)
-        if user_settings.get("enable_home_assistant", True):
+        if user_settings.get("enable_home_assistant", True) and mqtt_publisher and mqtt_publisher.connected:
             mqtt_payload = {
                 "person": person,
                 "confidence": confidence,
@@ -1095,7 +1110,7 @@ async def health_check():
         mr60bha2_health = {"status": "error", "error": str(e)}
     
     # Overall health
-    is_healthy = db_healthy and (mqtt_publisher.connected or not mqtt_publisher.enabled)
+    is_healthy = db_healthy and (mqtt_publisher and (mqtt_publisher.connected or not mqtt_publisher.enabled))
     
     return {
         "status": "healthy" if is_healthy else "unhealthy",
@@ -1103,8 +1118,8 @@ async def health_check():
             "database": "connected" if db_healthy else "disconnected",
             "biometric_system": biometric_health,
             "mqtt": {
-                "enabled": mqtt_publisher.enabled,
-                "connected": mqtt_publisher.connected
+                "enabled": mqtt_publisher.enabled if mqtt_publisher else False,
+                "connected": mqtt_publisher.connected if mqtt_publisher else False
             },
             "mr60bha2_sensor": mr60bha2_health,  # *** NEW: Sensor health ***
             "build_note_2": {
@@ -1168,6 +1183,15 @@ async def biometric_system_status():
 @app.get("/api/mqtt/status", tags=["MQTT"])
 async def mqtt_status():
     """Get MQTT connection status."""
+    if not mqtt_publisher:
+        return {
+            "enabled": False,
+            "connected": False,
+            "broker": "not_configured",
+            "base_topic": "not_configured",
+            "error": "MQTT publisher not initialized"
+        }
+    
     return {
         "enabled": mqtt_publisher.enabled,
         "connected": mqtt_publisher.connected,
@@ -1179,7 +1203,7 @@ async def mqtt_status():
 @app.post("/api/mqtt/test-publish", tags=["MQTT"])
 async def test_mqtt_publish():
     """Test MQTT publishing with a sample message."""
-    if not mqtt_publisher.connected:
+    if not mqtt_publisher or not mqtt_publisher.connected:
         raise HTTPException(
             status_code=503,
             detail=create_error_response(
@@ -1274,9 +1298,9 @@ if os.getenv("ENVIRONMENT", "development") == "development":
                 table="test_table"
             )
         elif exception_type == "integrity":
-            raise IntegrityError("Duplicate key", None, None)
+            raise IntegrityError("Duplicate key", None, Exception("Duplicate key"))
         elif exception_type == "operational":
-            raise OperationalError("Connection failed", None, None)
+            raise OperationalError("Connection failed", None, Exception("Connection failed"))
         else:
             return {"message": f"No test configured for exception type {exception_type}"}
     
@@ -1321,7 +1345,7 @@ if os.getenv("ENVIRONMENT", "development") == "development":
             
             # Test matching with fake data
             test_hr = [72, 75, 68, 70, 74]
-            matched_user = biometric_matcher.match_profile(test_hr)
+            matched_user = biometric_matcher.match_profile([float(x) for x in test_hr])
             
             return {
                 "biometric_system": "functional",
