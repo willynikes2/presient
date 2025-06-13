@@ -50,27 +50,40 @@ from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
 # Import SQLite biometric matcher
 from backend.utils.biometric_matcher import SQLiteBiometricMatcher, load_profiles_from_db
 
-# *** MR60BHA2 sensor integration - Stub implementations until module is created ***
-async def startup_mr60bha2_integration(biometric_matcher=None, mqtt_publisher=None, notification_system=None):
-    """Stub implementation for MR60BHA2 integration startup"""
-    logger.info("📡 MR60BHA2 integration module not yet implemented - using stub")
-    return True
+# *** Import MR60BHA2 sensor integration ***
+try:
+    from backend.services import mqtt_subscriber
+    if hasattr(mqtt_subscriber, "get_mr60bha2_status"):
+        get_mr60bha2_status = getattr(mqtt_subscriber, "get_mr60bha2_status")
+    else:
+        def get_mr60bha2_status():
+            return {
+                "connected": False,
+                "status": "module_not_available",
+                "error": "get_mr60bha2_status not found in mqtt_subscriber"
+            }
+    MR60BHA2_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("✅ MR60BHA2 integration module loaded successfully")
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"⚠️ MR60BHA2 integration not available: {e}")
+    MR60BHA2_AVAILABLE = False
 
-async def shutdown_mr60bha2_integration():
-    """Stub implementation for MR60BHA2 integration shutdown"""
-    logger.info("📡 MR60BHA2 integration shutdown (stub)")
-    return True
+    # Fallback stub functions if import fails
+    async def startup_mr60bha2_integration(*args, **kwargs):
+        logger.info("📡 MR60BHA2 module not found - using stub")
+        return False
 
-def get_mr60bha2_status():
-    """Stub implementation for MR60BHA2 status"""
-    return {
-        "connected": False,
-        "status": "not_implemented",
-        "buffer_size": 0,
-        "presence_detected": False,
-        "topics": {},
-        "note": "MR60BHA2 integration module not yet implemented"
-    }
+    async def shutdown_mr60bha2_integration():
+        pass
+
+    def get_mr60bha2_status():
+        return {
+            "connected": False,
+            "status": "module_not_available",
+            "error": "mqtt_subscriber.py not found or get_mr60bha2_status missing"
+        }
 
 # Configure logging to stdout
 logging.basicConfig(
@@ -136,16 +149,18 @@ async def lifespan(app: FastAPI):
     # Initialize Build Note 2 components
     await startup_notification_system()
     
-    # *** NEW: Initialize MR60BHA2 integration ***
+    # *** Initialize MR60BHA2 integration ***
     if biometric_matcher and mqtt_publisher:
         try:
-            await startup_mr60bha2_integration(
-                biometric_matcher=biometric_matcher,
-                mqtt_publisher=mqtt_publisher,
-                notification_system=trigger_presence_notification  # Your Ring-style notification system
-            )
-            logger.info("📡 MR60BHA2 sensor integration initialized")
-            
+            if MR60BHA2_AVAILABLE:
+                await startup_mr60bha2_integration(
+                    biometric_matcher=biometric_matcher,
+                    mqtt_publisher=mqtt_publisher,
+                    notification_system=trigger_presence_notification
+                )
+                logger.info("📡 MR60BHA2 sensor integration initialized")
+            else:
+                logger.info("📡 MR60BHA2 integration skipped - module not available")
         except Exception as e:
             logger.error(f"❌ Failed to initialize MR60BHA2 integration: {e}")
             # Don't fail startup, sensor is optional
@@ -165,8 +180,9 @@ async def lifespan(app: FastAPI):
     await shutdown_mqtt()
     await shutdown_notification_system()
     
-    # *** NEW: Shutdown MR60BHA2 integration ***
-    await shutdown_mr60bha2_integration()
+    # *** Shutdown MR60BHA2 integration ***
+    if MR60BHA2_AVAILABLE:
+        await shutdown_mr60bha2_integration()
 
 async def startup_biometric_system():
     """Initialize biometric matching system on startup"""
@@ -289,7 +305,7 @@ def get_biometric_profiles() -> dict:
 app = FastAPI(
     title="Presient API with MR60BHA2 Sensor Integration",
     description="Biometric presence authentication system with mmWave sensor and Ring-style notifications",
-    version="2.1.0",  # *** Updated version for MR60BHA2 support ***
+    version="2.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan
@@ -306,14 +322,14 @@ app.add_middleware(
 )
 
 # ==================== Custom Error Response ====================
-def create_error_response(error_code: str, message: str, details: dict = None) -> dict:
+def create_error_response(error_code: str, message: str, details: Optional[dict] = None) -> dict:
     """Create standardized error response"""
     response = {
         "error": error_code,
         "message": message
     }
     if details:
-        response["details"] = details
+        response["details"] = str(details)
     return response
 
 # ==================== SQLAlchemy Exception Handlers ====================
@@ -409,7 +425,7 @@ async def send_expo_push_notification(push_token: str, title: str, body: str, da
         }
         
         if data:
-            payload["data"] = data
+            payload["data"] = json.dumps(data)
         
         async with httpx.AsyncClient() as client:
             response = await client.post(url, json=payload)
@@ -541,7 +557,7 @@ async def execute_app_routine(person: str, routine_type: str, confidence: float)
     except Exception as e:
         logger.error(f"❌ Error executing app routine: {e}")
 
-# ==================== NEW: MR60BHA2 Sensor API Endpoints ====================
+# ==================== MR60BHA2 Sensor API Endpoints ====================
 
 @app.get("/api/sensor/mr60bha2/status", tags=["MR60BHA2 Sensor"])
 async def get_mr60bha2_sensor_status():
@@ -1034,13 +1050,14 @@ async def read_root():
     """Root endpoint to verify API is running."""
     global biometric_profiles
     
-    # *** NEW: Get MR60BHA2 status ***
+    # Get MR60BHA2 status
     mr60bha2_info = {"status": "not_initialized"}
     try:
         mr60bha2_status = get_mr60bha2_status()
         mr60bha2_info = {
             "status": "connected" if mr60bha2_status.get("connected") else "disconnected",
-            "sensor_type": "MR60BHA2 mmWave"
+            "sensor_type": "MR60BHA2 mmWave",
+            "module_available": MR60BHA2_AVAILABLE
         }
     except:
         pass
@@ -1048,13 +1065,13 @@ async def read_root():
     return {
         "message": "Presient API with MR60BHA2 Sensor Integration",
         "status": "healthy",
-        "version": "2.1.0",  # *** Updated version ***
+        "version": "2.1.0",
         "biometric_system": {
             "initialized": biometric_matcher is not None,
             "enrolled_users": len(biometric_profiles),
             "database_path": getattr(biometric_matcher, 'db_path', None) if biometric_matcher else None
         },
-        "mr60bha2_sensor": mr60bha2_info,  # *** NEW: Sensor info ***
+        "mr60bha2_sensor": mr60bha2_info,
         "build_note_2": {
             "push_tokens_registered": len(push_tokens),
             "automation_settings_configured": len(automation_settings),
@@ -1096,7 +1113,7 @@ async def health_check():
             logger.error(f"Biometric database health check failed: {e}")
             biometric_health["database_error"] = str(e)
     
-    # *** NEW: Check MR60BHA2 sensor health ***
+    # Check MR60BHA2 sensor health
     mr60bha2_health = {"status": "not_initialized"}
     try:
         mr60bha2_status = get_mr60bha2_status()
@@ -1104,7 +1121,8 @@ async def health_check():
             "status": "connected" if mr60bha2_status.get("connected") else "disconnected",
             "buffer_size": mr60bha2_status.get("buffer_size", 0),
             "presence_detected": mr60bha2_status.get("presence_detected", False),
-            "topics_subscribed": len(mr60bha2_status.get("topics", {}))
+            "topics_subscribed": len(mr60bha2_status.get("topics", {})),
+            "module_available": MR60BHA2_AVAILABLE
         }
     except Exception as e:
         mr60bha2_health = {"status": "error", "error": str(e)}
@@ -1121,14 +1139,14 @@ async def health_check():
                 "enabled": mqtt_publisher.enabled if mqtt_publisher else False,
                 "connected": mqtt_publisher.connected if mqtt_publisher else False
             },
-            "mr60bha2_sensor": mr60bha2_health,  # *** NEW: Sensor health ***
+            "mr60bha2_sensor": mr60bha2_health,
             "build_note_2": {
                 "notification_system": "operational",
                 "push_tokens": len(push_tokens),
                 "automation_settings": len(automation_settings)
             }
         },
-        "version": "2.1.0",  # *** Updated version ***
+        "version": "2.1.0",
         "environment": os.getenv("ENVIRONMENT", "development")
     }
 
@@ -1215,14 +1233,14 @@ async def test_mqtt_publish():
     try:
         test_data = {
             "test": True,
-            "message": "Hello from Presient API with MR60BHA2 Integration",  # *** Updated ***
+            "message": "Hello from Presient API with MR60BHA2 Integration",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "build_note_2_features": [
                 "ring_style_notifications",
                 "automation_decoupling",
                 "app_routines"
             ],
-            "mr60bha2_features": [  # *** NEW ***
+            "mr60bha2_features": [
                 "real_heartbeat_detection",
                 "mmwave_presence_sensing",
                 "automatic_biometric_matching"
@@ -1354,7 +1372,7 @@ if os.getenv("ENVIRONMENT", "development") == "development":
                 "test_match_result": matched_user or "no_match",
                 "test_hr_values": test_hr,
                 "build_note_2_integration": "ready",
-                "mr60bha2_integration": "ready"  # *** NEW ***
+                "mr60bha2_integration": "ready"
             }
             
         except Exception as e:
