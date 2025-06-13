@@ -50,21 +50,21 @@ from backend.services.mqtt import initialize_mqtt, shutdown_mqtt, mqtt_publisher
 # Import SQLite biometric matcher
 from backend.utils.biometric_matcher import SQLiteBiometricMatcher, load_profiles_from_db
 
-# *** Import MR60BHA2 sensor integration ***
+# Import MR60BHA2 sensor integration
 try:
     from backend.services import mqtt_subscriber
+
+    if hasattr(mqtt_subscriber, "startup_mr60bha2_integration"):
+        startup_mr60bha2_integration = mqtt_subscriber.startup_mr60bha2_integration
+    if hasattr(mqtt_subscriber, "shutdown_mr60bha2_integration"):
+        shutdown_mr60bha2_integration = mqtt_subscriber.shutdown_mr60bha2_integration
     if hasattr(mqtt_subscriber, "get_mr60bha2_status"):
-        get_mr60bha2_status = getattr(mqtt_subscriber, "get_mr60bha2_status")
-    else:
-        def get_mr60bha2_status():
-            return {
-                "connected": False,
-                "status": "module_not_available",
-                "error": "get_mr60bha2_status not found in mqtt_subscriber"
-            }
+        get_mr60bha2_status = mqtt_subscriber.get_mr60bha2_status
+
     MR60BHA2_AVAILABLE = True
     logger = logging.getLogger(__name__)
-    logger.info("✅ MR60BHA2 integration module loaded successfully")
+    logger.info("📡 MR60BHA2 integration module loaded successfully")
+
 except ImportError as e:
     logger = logging.getLogger(__name__)
     logger.warning(f"⚠️ MR60BHA2 integration not available: {e}")
@@ -84,6 +84,7 @@ except ImportError as e:
             "status": "module_not_available",
             "error": "mqtt_subscriber.py not found or get_mr60bha2_status missing"
         }
+
 
 # Configure logging to stdout
 logging.basicConfig(

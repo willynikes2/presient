@@ -3,10 +3,9 @@ MR60BHA2 MQTT Subscriber Service for Presient Backend
 Connects to Home Assistant MQTT and processes real heart rate data
 """
 
-import asyncio
 import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -24,20 +23,15 @@ mr60bha2_status = {
 def get_mr60bha2_status() -> Dict[str, Any]:
     """Get current MR60BHA2 sensor status"""
     return {
-        "status": "connected" if mr60bha2_status["connected"] else "disconnected",
+        "connected": mr60bha2_status["connected"],
         "last_heartbeat": mr60bha2_status["last_heartbeat"],
         "heart_rate_samples": len(mr60bha2_status["heart_rate_buffer"]),
-        "presence": mr60bha2_status["presence_detected"],
+        "presence_detected": mr60bha2_status["presence_detected"],
         "last_error": mr60bha2_status["last_error"]
     }
 
-async def startup_mr60bha2_integration(mqtt_service=None):
-    """
-    Initialize MR60BHA2 MQTT integration
-
-    Args:
-        mqtt_service: Optional MQTT service instance
-    """
+async def startup_mr60bha2_integration():
+    """Initialize MR60BHA2 MQTT integration"""
     global mqtt_client, mr60bha2_status
 
     try:
@@ -110,15 +104,10 @@ async def startup_mr60bha2_integration(mqtt_service=None):
         mqtt_client.on_message = on_message
         mqtt_client.on_disconnect = on_disconnect
 
-        try:
-            mqtt_client.connect("192.168.1.102", 1883, 60)
-            mqtt_client.loop_start()
-            logger.info("🚀 MR60BHA2 MQTT integration started")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Could not connect to MQTT broker: {e}")
-            mr60bha2_status["last_error"] = str(e)
-            return False
+        mqtt_client.connect("192.168.1.102", 1883, 60)
+        mqtt_client.loop_start()
+        logger.info("🚀 MR60BHA2 MQTT integration started")
+        return True
 
     except Exception as e:
         logger.error(f"❌ Failed to initialize MR60BHA2 integration: {e}")
