@@ -17,7 +17,7 @@ class AuthenticationTester:
     """Test real biometric authentication"""
     
     def __init__(self):
-        self.mqtt_host = "192.168.1.135"
+        self.mqtt_host = "localhost"
         self.mqtt_port = 1883
         self.backend_url = "http://localhost:8000"
         self.test_samples = []

@@ -26,7 +26,7 @@ class RealEnrollmentCollector:
     """Collect real biometric data from MR60BHA2 sensor for enrollment"""
     
     def __init__(self):
-        self.mqtt_host = "192.168.1.135"
+        self.mqtt_host = "localhost"
         self.mqtt_port = 1883
         self.enrollment_samples: List[BiometricSample] = []
         self.enrollment_duration = 60  # seconds
@@ -228,7 +228,7 @@ def main():
     
     try:
         test_client = mqtt.Client(client_id="presient_test_connection")
-        test_client.connect("192.168.1.135", 1883, 10)
+        test_client.connect("localhost", 1883, 10)
         test_client.disconnect()
         print("✅ MQTT broker connection successful")
     except Exception as e:
