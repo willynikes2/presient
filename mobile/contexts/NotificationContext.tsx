@@ -141,7 +141,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
       console.log('💾 Saving push token to backend...')
       
       // Save to your FastAPI backend
-      const response = await fetch('http://192.168.1.135:8000/api/notifications/register-token', {
+      const response = await fetch('https://algeria-at-implementing-sales.trycloudflare.com/api/notifications/register-token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -146,11 +146,11 @@ echo "   • /api/auth/register (for user creation)"
 
 echo ""
 echo "🧪 Testing backend health endpoint..."
-if curl -s "http://192.168.1.135:8000/health" > /dev/null; then
-    echo "✅ Backend is accessible at http://192.168.1.135:8000"
+if curl -s "https://algeria-at-implementing-sales.trycloudflare.com/health" > /dev/null; then
+    echo "✅ Backend is accessible at https://algeria-at-implementing-sales.trycloudflare.com"
     
     echo "📋 Backend health details:"
-    curl -s "http://192.168.1.135:8000/health" | python3 -m json.tool | head -20
+    curl -s "https://algeria-at-implementing-sales.trycloudflare.com/health" | python3 -m json.tool | head -20
     
 else
     echo "❌ Backend not accessible. Make sure it's running with:"
@@ -169,7 +169,7 @@ echo ""
 echo "🚀 Next Steps:"
 echo "1. Save the biometric matcher and enrollment scripts from the artifacts"
 echo "2. Restart your backend server"
-echo "3. Check FastAPI docs at http://192.168.1.135:8000/docs for correct endpoint names"
+echo "3. Check FastAPI docs at https://algeria-at-implementing-sales.trycloudflare.com/docs for correct endpoint names"
 echo "4. Update mobile app to use the correct enrollment endpoint"
 echo ""
 

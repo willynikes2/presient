@@ -62,7 +62,7 @@ const BiometricEnrollmentScreen = () => {
   const [pulseAnim] = useState(new Animated.Value(1))
   
   // Your FastAPI backend URL (preserved)
-  const BACKEND_URL = 'http://192.168.1.135:8000'
+  const BACKEND_URL = 'https://algeria-at-implementing-sales.trycloudflare.com'
 
   // Step 1: Handle wearable question
   const handleWearableQuestion = (hasDevice: boolean) => {
