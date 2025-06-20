@@ -112,7 +112,7 @@ const AutomationSettingsScreen = () => {
       console.log('💾 Saving automation settings:', settings)
       
       // Save to backend
-      const response = await fetch('https://algeria-at-implementing-sales.trycloudflare.com/api/automation/settings', {
+      const response = await fetch('https://orange-za-speech-dosage.trycloudflare.com/api/automation/settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

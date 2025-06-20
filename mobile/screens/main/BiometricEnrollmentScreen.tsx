@@ -50,6 +50,7 @@ const BiometricEnrollmentScreen = () => {
   // Form state (preserved from your original)
   const [fullName, setFullName] = useState('')
   const [location, setLocation] = useState('')
+  const [customEmail, setCustomEmail] = useState('')
   
   // Recording state (enhanced for dual-sensor)
   const [isRecording, setIsRecording] = useState(false)
@@ -62,7 +63,24 @@ const BiometricEnrollmentScreen = () => {
   const [pulseAnim] = useState(new Animated.Value(1))
   
   // Your FastAPI backend URL (preserved)
-  const BACKEND_URL = 'https://algeria-at-implementing-sales.trycloudflare.com'
+  const BACKEND_URL = 'https://orange-za-speech-dosage.trycloudflare.com'
+
+  // Initialize with user's email if available
+  useEffect(() => {
+    if (user?.email && !customEmail) {
+      setCustomEmail(user.email)
+    }
+  }, [user])
+
+  // Get effective user ID/email for enrollment
+  const getEffectiveUserEmail = () => {
+    return customEmail.trim() || user?.email || 'unknown_user'
+  }
+
+  // Get username format for backend
+  const getUsername = () => {
+    return getEffectiveUserEmail().replace(/[^a-zA-Z0-9]/g, '_')
+  }
 
   // Step 1: Handle wearable question
   const handleWearableQuestion = (hasDevice: boolean) => {
@@ -222,9 +240,9 @@ const BiometricEnrollmentScreen = () => {
     }
   }
 
-  // Your original heart rate simulation (enhanced for dual-sensor)
+  // Your original heart rate simulation (enhanced for dual-sensor) - 30 second duration
   const simulateHeartbeatRecording = async (): Promise<BiometricData> => {
-    const duration = 30000 // 30 seconds
+    const duration = 30000 // 30 seconds as requested
     const sampleRate = 1000 // 1 sample per second
     const samples = duration / sampleRate
 
@@ -376,12 +394,12 @@ const BiometricEnrollmentScreen = () => {
     }
   }
 
-  // Enhanced enrollment with dual-sensor support
+  // Enhanced enrollment with dual-sensor support and proper email handling
   const enrollUser = async () => {
-    if (!biometricData || !user) {
+    if (!biometricData) {
       Alert.alert(
         '⚠️ Error', 
-        '🫀 Missing biometric data or user information.',
+        '🫀 Missing biometric data.',
         [{ text: 'OK' }],
         { userInterfaceStyle: 'dark' }
       )
@@ -389,10 +407,13 @@ const BiometricEnrollmentScreen = () => {
     }
 
     setIsProcessing(true)
-    // Convert user ID to username format (preserved from your original)
-    const username = user.email?.replace(/[@.]/g, '_') || 'unknown_user'
+    
+    // Use dynamic email/user ID from profile or custom override
+    const effectiveEmail = getEffectiveUserEmail()
+    const username = getUsername()
+    
     console.log(`🔄 Enrolling user: ${fullName} with ${sourceType}`)
-    console.log(`👤 Email: ${user.email}`)
+    console.log(`👤 Effective Email: ${effectiveEmail}`)
     console.log(`🆔 Username: ${username}`) 
     console.log(`📍 Location: ${location}`)
     console.log(`📊 Phone HR samples: ${biometricData.heartbeat_pattern.length}`)
@@ -403,17 +424,19 @@ const BiometricEnrollmentScreen = () => {
 
     try {
       
-      // Enhanced enrollment data with dual-sensor support
+      // Enhanced enrollment data with dual-sensor support and proper user ID
       const enrollmentData = sourceType === 'dual_sensor' ? {
         // Dual-sensor format for new endpoint
         phoneHeartRate: biometricData.heartbeat_pattern,
         wearableHeartRate: wearableData?.heartRate,
         source: sourceType,
         userName: fullName,
-        user_id: username
-      } : {
-        // Original format for existing endpoint
         user_id: username,
+        email: effectiveEmail
+      } : {
+        // Original format for existing endpoint with proper user ID
+        user_id: username,
+        email: effectiveEmail,
         device_id: 'mobile_app',
         heartbeat_pattern: biometricData.heartbeat_pattern,
         mean_hr: biometricData.mean_hr,
@@ -444,6 +467,7 @@ const BiometricEnrollmentScreen = () => {
         console.log(`✅ ${sourceType} enrollment successful:`, result)
         console.log(`🎯 Confidence threshold: ${result.confidence_threshold ? Math.round(result.confidence_threshold * 100) + '%' : 'N/A'}`)
         console.log(`👤 User ID: ${username}`)
+        console.log(`📧 Email: ${effectiveEmail}`)
         console.log(`📍 Location: ${location}`)
         console.log(`🔄 Profile created: ${result.profile_created || result.success}`)
         
@@ -451,6 +475,7 @@ const BiometricEnrollmentScreen = () => {
         const successMessage = sourceType === 'dual_sensor' ?
           `🫀 ${fullName} has been enrolled with dual-sensor biometric authentication\n\n` +
           `👤 User ID: ${username}\n` +
+          `📧 Email: ${effectiveEmail}\n` +
           `📍 Location: ${location}\n` +
           `📊 Phone Samples: ${biometricData.heartbeat_pattern.length}\n` +
           `⌚ Apple Watch HR: ${wearableData?.heartRate} BPM\n` +
@@ -458,6 +483,7 @@ const BiometricEnrollmentScreen = () => {
           `✨ Your dual-sensor heartbeat pattern provides enhanced accuracy and fallback support.` :
           `🫀 ${fullName} has been enrolled in the biometric system\n\n` +
           `👤 User ID: ${username}\n` +
+          `📧 Email: ${effectiveEmail}\n` +
           `📍 Location: ${location}\n` +
           `📊 Cardiac Samples: ${biometricData.heartbeat_pattern.length}\n\n` +
           `✨ Your unique heartbeat pattern is now registered for secure family presence detection.`
@@ -507,17 +533,22 @@ const BiometricEnrollmentScreen = () => {
     }
   }
 
-  // Enhanced authentication test with dual-sensor support
+  // Enhanced authentication test with dual-sensor support and proper user ID
   const testAuthentication = async () => {
-    if (!biometricData || !user) return
+    if (!biometricData) return
 
     console.log(`🫀 Testing ${sourceType} biometric authentication...`)
     setIsProcessing(true)
 
     try {
-      // Enhanced auth data with dual-sensor support
+      // Use dynamic email/user ID for authentication
+      const effectiveEmail = getEffectiveUserEmail()
+      const username = getUsername()
+      
+      // Enhanced auth data with dual-sensor support and proper user ID
       const authData = sourceType === 'dual_sensor' ? {
-        user_id: user.email?.replace(/[@.]/g, '_') || 'unknown_user',
+        user_id: username,
+        email: effectiveEmail,
         sensor_id: 'mobile_app_sensor',
         confidence: 0.85,
         device_id: 'mobile_app',
@@ -528,8 +559,9 @@ const BiometricEnrollmentScreen = () => {
         location: location || 'Test dual-sensor authentication',
         source: sourceType
       } : {
-        // Use the PROVEN working format that triggers Shield
-        user_id: user.email?.replace(/[@.]/g, '_') || 'unknown_user',
+        // Use the PROVEN working format that triggers Shield with proper user ID
+        user_id: username,
+        email: effectiveEmail,
         sensor_id: 'mobile_app_sensor',
         confidence: 0.85,
         device_id: 'mobile_app',
@@ -570,6 +602,7 @@ const BiometricEnrollmentScreen = () => {
         const successMessage = sourceType === 'dual_sensor' ?
           `🫀 Dual-Sensor Authentication Verified\n\n` +
           `👤 Identity Confirmed: ${matchedUser}\n` +
+          `📧 Email: ${effectiveEmail}\n` +
           `📊 Biometric Confidence: ${confidence}%\n` +
           `📱 Phone HR: ${result.sensor_data.heart_rate} BPM\n` +
           `⌚ Watch HR: ${result.sensor_data.heart_rate_wearable || 'N/A'} BPM\n` +
@@ -579,6 +612,7 @@ const BiometricEnrollmentScreen = () => {
           `✨ Your dual-sensor cardiac signature authenticated with medical-grade precision.` :
           `🫀 Heartbeat Pattern Verified\n\n` +
           `👤 Identity Confirmed: ${matchedUser}\n` +
+          `📧 Email: ${effectiveEmail}\n` +
           `📊 Biometric Confidence: ${confidence}%\n` +
           `💓 Heart Rate: ${result.sensor_data.heart_rate} BPM\n` +
           `🫁 Breathing Rate: ${result.sensor_data.breathing_rate} BPM\n\n` +
@@ -732,8 +766,19 @@ const BiometricEnrollmentScreen = () => {
                   value={fullName}
                   onChangeText={setFullName}
                   placeholder="Enter your full name"
+                  placeholderTextColor="#6B7280" />
+
+                <Text style={styles.inputLabel}>Email for Enrollment</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={customEmail}
+                  onChangeText={setCustomEmail}
+                  placeholder={user?.email || "Enter email for biometric profile"}
                   placeholderTextColor="#6B7280"
                 />
+                <Text style={styles.inputHint}>
+                  {user?.email ? `Default: ${user.email}` : 'Enter the email to associate with this biometric profile'}
+                </Text>
               </View>
               <View style={styles.inputContainer}>
                 <Text style={styles.inputLabel}>Location</Text>
@@ -750,7 +795,7 @@ const BiometricEnrollmentScreen = () => {
             {/* Recording Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                🫀 {sourceType === 'dual_sensor' ? 'Dual-Sensor' : 'Cardiac'} Recording
+                🫀 {sourceType === 'dual_sensor' ? 'Dual-Sensor' : 'Cardiac'} Recording (30 seconds)
               </Text>
               
               <View style={styles.recordingContainer}>
@@ -787,7 +832,7 @@ const BiometricEnrollmentScreen = () => {
               {sourceType === 'dual_sensor' && wearableData && (
                 <Text style={styles.watchDataText}>⌚ Apple Watch: {wearableData.heartRate} BPM</Text>
               )}
-              <Text style={styles.progressText}>{Math.round(recordingProgress)}% complete</Text>
+              <Text style={styles.progressText}>{Math.round(recordingProgress)}% complete (30 seconds)</Text>
               <View style={styles.progressBar}>
                 <View style={[styles.progressFill, { width: `${recordingProgress}%` }]} />
               </View>
@@ -813,6 +858,7 @@ const BiometricEnrollmentScreen = () => {
                 )}
                 <Text style={styles.statsText}>📈 Heart Rate Variability: {biometricData.std_hr}</Text>
                 <Text style={styles.statsText}>📏 Rate Range: {biometricData.range_hr} BPM</Text>
+                <Text style={styles.statsText}>📧 Email: {getEffectiveUserEmail()}</Text>
               </View>
               <TouchableOpacity
                 style={[styles.enrollButton, isProcessing && styles.enrollButtonDisabled]}
@@ -850,31 +896,30 @@ const BiometricEnrollmentScreen = () => {
                 ? '• Apple Watch provides medical-grade heart rate data\n' +
                   '• Phone camera captures additional cardiac patterns\n' +
                   '• Dual sensors provide 5% confidence boost when agreeing\n' +
-                  '• Automatic fallback if either sensor is unavailable\n' +
-                  '• Lower authentication threshold (75% vs 80%)\n' +
-                  '• MQTT events published to Home Assistant for automation'
-                : '• Your heartbeat pattern is as unique as a fingerprint\n' +
-                  '• We analyze cardiac rhythm, rate variability, and timing\n' +
-                  '• Data is processed locally with medical-grade encryption\n' +
-                  '• No biometric data is stored in external clouds\n' +
-                  '• MQTT events published to Home Assistant for automation\n' +
-                  '• Home Assistant handles all smart device control'
+                  '• Fallback to single sensor if one fails\n' +
+                  '• Enhanced accuracy for family member identification\n' +
+                  '• 30-second enrollment captures comprehensive patterns\n' +
+                  '• Secure local processing with encrypted storage'
+                : '• Heart rate patterns are unique like fingerprints\n' +
+                  '• 30-second recording captures comprehensive cardiac signature\n' +
+                  '• Advanced algorithms analyze rhythm and variability\n' +
+                  '• Secure local processing protects your privacy\n' +
+                  '• Works with existing smart home automation\n' +
+                  '• No external biometric services required'
               }
             </Text>
           </View>
         )}
-
       </ScrollView>
     </SafeAreaView>
   )
 }
 
-// Enhanced styles (preserving your original theme, adding new elements)
+// Styles (preserved from your original with enhancements)
 const styles = StyleSheet.create({
-  // Your original styles (preserved)
   container: {
     flex: 1,
-    backgroundColor: '#1E293B', // Dark medical theme
+    backgroundColor: '#0F172A',
   },
   content: {
     flex: 1,
@@ -888,13 +933,26 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 8,
+    textAlign: 'center',
+    marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
     color: '#94A3B8',
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 24,
+  },
+  dualSensorBadge: {
+    backgroundColor: '#059669',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    marginTop: 10,
+  },
+  dualSensorBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   section: {
     marginBottom: 30,
@@ -906,46 +964,51 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   inputContainer: {
-    marginBottom: 15,
+    marginBottom: 20,
   },
   inputLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 16,
     color: '#E2E8F0',
     marginBottom: 8,
+    fontWeight: '500',
+  },
+  inputHint: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   textInput: {
-    backgroundColor: '#334155',
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#334155',
     borderRadius: 12,
-    padding: 15,
+    padding: 16,
     fontSize: 16,
     color: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#475569',
   },
   recordingContainer: {
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#334155',
+    backgroundColor: '#1E293B',
     borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
   },
   recordingInstructions: {
     fontSize: 16,
-    color: '#E2E8F0',
+    color: '#CBD5E1',
     textAlign: 'center',
+    lineHeight: 24,
     marginBottom: 20,
-    lineHeight: 22,
   },
   recordButton: {
-    backgroundColor: '#10B981', // Health green
-    paddingHorizontal: 30,
-    paddingVertical: 15,
+    backgroundColor: '#DC2626',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
     borderRadius: 12,
-    minWidth: 200,
     alignItems: 'center',
   },
   recordButtonDisabled: {
-    backgroundColor: '#64748B',
+    backgroundColor: '#374151',
   },
   recordButtonText: {
     color: '#FFFFFF',
@@ -953,38 +1016,50 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   recordingIndicator: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#DC2626',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 20,
   },
   recordingIcon: {
-    fontSize: 48,
+    fontSize: 40,
   },
   recordingText: {
     fontSize: 18,
-    fontWeight: '600',
     color: '#FFFFFF',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  watchDataText: {
+    fontSize: 16,
+    color: '#10B981',
+    fontWeight: '500',
     marginBottom: 10,
   },
   progressText: {
     fontSize: 16,
-    color: '#94A3B8',
+    color: '#CBD5E1',
     marginBottom: 15,
   },
   progressBar: {
     width: '100%',
     height: 8,
-    backgroundColor: '#475569',
+    backgroundColor: '#374151',
     borderRadius: 4,
     marginBottom: 20,
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#10B981', // Health green progress
+    backgroundColor: '#DC2626',
     borderRadius: 4,
   },
   stopButton: {
-    backgroundColor: '#EF4444',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: '#374151',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
   },
   stopButtonText: {
@@ -994,30 +1069,34 @@ const styles = StyleSheet.create({
   },
   recordingComplete: {
     fontSize: 20,
+    color: '#10B981',
     fontWeight: '600',
-    color: '#10B981', // Health green
+    textAlign: 'center',
     marginBottom: 20,
   },
   statsContainer: {
-    marginBottom: 25,
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    width: '100%',
   },
   statsText: {
-    fontSize: 16,
-    color: '#E2E8F0',
-    marginBottom: 5,
-    textAlign: 'center',
+    fontSize: 14,
+    color: '#CBD5E1',
+    marginBottom: 8,
+    fontFamily: 'monospace',
   },
   enrollButton: {
-    backgroundColor: '#10B981', // Health green
-    paddingHorizontal: 30,
-    paddingVertical: 15,
+    backgroundColor: '#059669',
+    paddingVertical: 16,
+    paddingHorizontal: 32,
     borderRadius: 12,
-    minWidth: 200,
     alignItems: 'center',
-    marginBottom: 15,
+    marginBottom: 12,
   },
   enrollButtonDisabled: {
-    backgroundColor: '#64748B',
+    backgroundColor: '#374151',
   },
   enrollButtonText: {
     color: '#FFFFFF',
@@ -1025,65 +1104,62 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   retryButton: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    backgroundColor: '#374151',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#64748B',
   },
   retryButtonText: {
-    color: '#94A3B8',
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '500',
   },
   infoSection: {
-    marginTop: 20,
-    padding: 20,
-    backgroundColor: '#334155',
+    backgroundColor: '#1E293B',
     borderRadius: 16,
+    padding: 20,
+    marginTop: 20,
   },
   infoTitle: {
     fontSize: 18,
-    fontWeight: '600',
     color: '#FFFFFF',
-    marginBottom: 10,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   infoText: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: '#CBD5E1',
     lineHeight: 20,
   },
-
-  // New styles for Apple Watch integration
+  // Wearable question styles
   wearableQuestionContainer: {
-    alignItems: 'center',
-    padding: 30,
-    backgroundColor: '#334155',
+    backgroundColor: '#1E293B',
     borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
   },
   wearableIcon: {
-    fontSize: 64,
+    fontSize: 60,
     marginBottom: 20,
   },
   wearableButtonContainer: {
     width: '100%',
-    marginBottom: 30,
+    marginVertical: 20,
   },
   wearableButton: {
     paddingVertical: 16,
     paddingHorizontal: 24,
     borderRadius: 12,
-    marginBottom: 12,
     alignItems: 'center',
+    marginBottom: 12,
   },
   primaryWearableButton: {
-    backgroundColor: '#10B981',
+    backgroundColor: '#059669',
   },
   secondaryWearableButton: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#475569',
+    borderWidth: 2,
+    borderColor: '#374151',
   },
   wearableButtonText: {
     fontSize: 16,
@@ -1091,43 +1167,28 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   secondaryWearableButtonText: {
-    color: '#94A3B8',
+    color: '#CBD5E1',
   },
   benefitsContainer: {
-    backgroundColor: '#475569',
-    padding: 20,
+    backgroundColor: '#0F172A',
     borderRadius: 12,
+    padding: 16,
     width: '100%',
+    marginTop: 10,
   },
   benefitsTitle: {
     fontSize: 16,
+    color: '#FFFFFF',
     fontWeight: '600',
-    color: '#E2E8F0',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   benefit: {
     fontSize: 14,
-    color: '#94A3B8',
+    color: '#CBD5E1',
     marginBottom: 6,
-  },
-  dualSensorBadge: {
-    backgroundColor: '#10B981',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginTop: 12,
-  },
-  dualSensorBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  watchDataText: {
-    fontSize: 16,
-    color: '#10B981',
-    marginBottom: 8,
-    fontWeight: '500',
+    lineHeight: 18,
   },
 })
 
 export default BiometricEnrollmentScreen
+

@@ -54,7 +54,7 @@ const SensorDetailScreen = () => {
   const [isLoading, setIsLoading] = useState(true)
   const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const BACKEND_URL = 'https://algeria-at-implementing-sales.trycloudflare.com'
+  const BACKEND_URL = 'https://orange-za-speech-dosage.trycloudflare.com'
 
   useEffect(() => {
     loadSensorData()

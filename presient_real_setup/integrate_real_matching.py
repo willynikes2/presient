@@ -59,9 +59,9 @@ logger = logging.getLogger(__name__)
 class EnhancedMQTTSubscriber:
     """Enhanced MQTT subscriber with real biometric matching"""
     
-    def __init__(self, backend_url="http://localhost:8000"):
+    def __init__(self, backend_url="http://192.168.1.135:8000"):
         self.backend_url = backend_url
-        self.mqtt_host = "192.168.1.135"
+        self.mqtt_host = "localhost"
         self.mqtt_port = 1883
         
         # Real biometric matcher
