@@ -500,7 +500,7 @@ const BiometricEnrollmentScreen = () => {
             {
               text: '🏠 Back to Dashboard',
               style: 'default',
-              onPress: () => navigation.goBack()
+              onPress: () => navigation.navigate('Dashboard')
             }
           ],
           { userInterfaceStyle: 'dark' }

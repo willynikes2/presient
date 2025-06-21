@@ -31,11 +31,23 @@ class ConnectedBiometricBridge:
         self.mqtt_port = 1883
         self.backend_url = "http://localhost:8000"  # Fixed to use localhost
         
-        # Initialize biometric matcher
-        self.matcher = RealBiometricMatcher()
+        # Initialize biometric matcher - CORRECTED INDENTATION
+        self.matcher = RealBiometricMatcher( )
         logger.info(f"✅ Biometric matcher loaded with {len(self.matcher.profiles)} profiles")
         
-        # Tracking
+        # --- ADDED LINES (with correct indentation) ---
+        logger.info("--- Loaded Biometric Profiles ---")
+        for user_id, profile in self.matcher.profiles.items():
+            logger.info(f"  User: {profile.name} (ID: {profile.user_id})")
+            logger.info(f"    Baseline HR: {profile.heart_rate_baseline:.1f} BPM")
+            logger.info(f"    HR Range: {profile.heart_rate_range[0]:.1f} - {profile.heart_rate_range[1]:.1f} BPM")
+            logger.info(f"    HR StdDev: {profile.heart_rate_stdev:.1f}")
+            logger.info(f"    Confidence Threshold: {profile.confidence_threshold:.1%}")
+            logger.info(f"    Samples Count: {profile.samples_count}")
+        logger.info("-------------------------------")
+        # --- END ADDED LINES ---
+
+        # Tracking - CORRECTED INDENTATION
         self.last_match_time = None
         self.match_cooldown = 30  # seconds
         self.total_matches = 0
@@ -118,8 +130,8 @@ class ConnectedBiometricBridge:
             if response != 'y':
                 return
         
-        # MQTT setup
-        def on_connect(client, userdata, flags, rc):
+        # MQTT setup - Updated on_connect signature for paho-mqtt v2.0
+        def on_connect(client, userdata, flags, rc, properties=None):
             if rc == 0:
                 logger.info("✅ Bridge connected to MQTT broker")
                 
@@ -140,7 +152,8 @@ class ConnectedBiometricBridge:
             else:
                 logger.error(f"❌ MQTT connection failed: {rc}")
         
-        def on_message(client, userdata, msg):
+        # Updated on_message signature for paho-mqtt v2.0
+        def on_message(client, userdata, msg, properties=None):
             try:
                 topic = msg.topic
                 payload = msg.payload.decode('utf-8')
@@ -183,8 +196,8 @@ class ConnectedBiometricBridge:
             except Exception as e:
                 logger.error(f"❌ MQTT processing error: {e}")
         
-        # Create MQTT client
-        client = mqtt.Client(client_id="presient_connected_bridge")
+        # Create MQTT client - Specify CallbackAPIVersion.VERSION2
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="presient_connected_bridge")
         client.on_connect = on_connect
         client.on_message = on_message
         

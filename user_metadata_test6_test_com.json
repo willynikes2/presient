@@ -1,0 +1,10 @@
+{
+  "user_id": "test6_test_com",
+  "display_name": "Tester 6 Betty",
+  "location": "Bedroom",
+  "enrolled_at": "2025-06-20T18:49:12.776567",
+  "has_wearable": false,
+  "sample_count": 30,
+  "enrollment_duration": 30,
+  "device_id": "mobile_app"
+}

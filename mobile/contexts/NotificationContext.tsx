@@ -184,9 +184,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
             confidence: 95.0,
             timestamp: new Date().toISOString(),
             type: 'presence_detection'
-          } as PresenceNotificationData,
+          },
         },
-        trigger: { seconds: 2 },
+        trigger: { seconds: 2, type: 'timeInterval' },
       })
 
       Alert.alert('🔔 Test Notification Sent!', 'Check your notification tray in 2 seconds')

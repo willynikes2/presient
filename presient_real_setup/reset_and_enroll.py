@@ -1,254 +1,59 @@
 #!/usr/bin/env python3
 """
-Reset Database and Enroll with Real Biometric Data
-Collects live MR60BHA2 sensor data for enrollment
+Presient Multi-User Enrollment Script
+Allows enrollment of multiple users for biometric matching.
 """
 
-import asyncio
-import logging
-import paho.mqtt.client as mqtt
-import time
-import statistics
-from datetime import datetime
-from typing import List
-import sys
-import os
+import argparse
+from real_biometric_matcher import RealBiometricMatcher
+from biometric_data_collector import BiometricDataCollector # Corrected import
 
-# Add current directory to path so we can import the matcher
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+def enroll_user_flow(matcher: RealBiometricMatcher):
+    print("\n📝 Enroll New User")
+    user_name = input("Enter full name: ").strip().lower().replace(" ", "_")
+    print(f"INFO:👤 User: {user_name}")
 
-from real_biometric_matcher import RealBiometricMatcher, BiometricSample
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-class RealEnrollmentCollector:
-    """Collect real biometric data from MR60BHA2 sensor for enrollment"""
-    
-    def __init__(self):
-        self.mqtt_host = "192.168.1.135"
-        self.mqtt_port = 1883
-        self.enrollment_samples: List[BiometricSample] = []
-        self.enrollment_duration = 60  # seconds
-        self.is_collecting = False
-        
-    def collect_enrollment_data(self, user_name: str) -> List[BiometricSample]:
-        """Collect biometric data for enrollment"""
-        logger.info(f"🎯 Starting enrollment data collection for: {user_name}")
-        logger.info(f"⏱️ Collection time: {self.enrollment_duration} seconds")
-        logger.info("📍 Please stay near your MR60BHA2 sensor...")
-        
-        self.enrollment_samples.clear()
-        self.is_collecting = True
-        
-        # MQTT setup
-        def on_message(client, userdata, msg):
-            if not self.is_collecting:
-                return
-                
-            try:
-                topic = msg.topic
-                payload = msg.payload.decode('utf-8')
-                
-                if "heart_rate" in topic and "/state" in topic:
-                    heart_rate = float(payload)
-                    
-                    # Validate heart rate
-                    if 40 <= heart_rate <= 180:
-                        sample = BiometricSample(
-                            heart_rate=heart_rate,
-                            timestamp=datetime.now()
-                        )
-                        self.enrollment_samples.append(sample)
-                        logger.info(f"💓 Collected: {heart_rate:.1f} BPM (sample #{len(self.enrollment_samples)})")
-                        
-                elif ("breath_rate" in topic or "breathing_rate" in topic) and "/state" in topic:
-                    try:
-                        breathing_rate = float(payload)
-                        # Add to most recent sample if it exists and doesn't have breathing rate
-                        if (self.enrollment_samples and 
-                            self.enrollment_samples[-1].breathing_rate is None and
-                            (datetime.now() - self.enrollment_samples[-1].timestamp).total_seconds() < 5):
-                            self.enrollment_samples[-1].breathing_rate = breathing_rate
-                            logger.debug(f"🫁 Added breathing: {breathing_rate:.1f} BPM")
-                    except ValueError:
-                        pass
-                        
-            except Exception as e:
-                logger.error(f"❌ Error processing MQTT message: {e}")
-        
-        # Connect to MQTT
-        client = mqtt.Client(client_id="presient_enrollment_collector")
-        client.on_message = on_message
-        
-        try:
-            client.connect(self.mqtt_host, self.mqtt_port, 60)
-            
-            # Subscribe to all heart rate topics
-            topics = [
-                "presient/sensor1/heart_rate/state",
-                "presient/sensor1/breath_rate/state",
-                "presient/sensor1/sensor/presient_mr60bha2_sensor_heart_rate/state",
-                "presient/sensor1/sensor/presient_mr60bha2_sensor_breathing_rate/state"
-            ]
-            
-            for topic in topics:
-                client.subscribe(topic)
-                logger.debug(f"📡 Subscribed to: {topic}")
-            
-            client.loop_start()
-            
-            # Collect for specified duration
-            start_time = time.time()
-            while time.time() - start_time < self.enrollment_duration:
-                remaining = self.enrollment_duration - (time.time() - start_time)
-                if remaining > 0:
-                    if len(self.enrollment_samples) == 0:
-                        logger.info(f"⏳ Waiting for sensor data... ({remaining:.0f}s remaining)")
-                    elif len(self.enrollment_samples) % 10 == 0:
-                        logger.info(f"📊 Collected {len(self.enrollment_samples)} samples ({remaining:.0f}s remaining)")
-                    time.sleep(1)
-            
-            self.is_collecting = False
-            client.loop_stop()
-            client.disconnect()
-            
-            logger.info(f"✅ Collection complete! Gathered {len(self.enrollment_samples)} samples")
-            
-            if len(self.enrollment_samples) < 5:
-                logger.error("❌ Insufficient data collected. Please check your MR60BHA2 sensor.")
-                return []
-            
-            # Show statistics
-            heart_rates = [s.heart_rate for s in self.enrollment_samples]
-            logger.info(f"📊 Heart Rate Statistics:")
-            logger.info(f"   💓 Average: {statistics.mean(heart_rates):.1f} BPM")
-            logger.info(f"   📈 Range: {min(heart_rates):.1f} - {max(heart_rates):.1f} BPM")
-            logger.info(f"   📊 Std Dev: {statistics.stdev(heart_rates):.1f} BPM")
-            
-            breathing_rates = [s.breathing_rate for s in self.enrollment_samples if s.breathing_rate]
-            if breathing_rates:
-                logger.info(f"   🫁 Breathing: {statistics.mean(breathing_rates):.1f} BPM avg")
-            
-            return self.enrollment_samples
-            
-        except Exception as e:
-            logger.error(f"❌ MQTT connection error: {e}")
-            return []
-
-def reset_database_and_enroll():
-    """Reset database and enroll with real sensor data"""
-    
-    logger.info("🎯 Real Biometric Enrollment System")
-    logger.info("=" * 50)
-    
-    # Initialize matcher
-    matcher = RealBiometricMatcher()
-    
-    # Reset existing data
-    logger.info("🗑️ Resetting biometric database...")
-    matcher.clear_profiles()
-    logger.info("✅ Database reset complete")
-    
-    # Get user details
-    print("\n📝 User Enrollment")
-    user_name = input("Enter your name: ").strip()
-    if not user_name:
-        user_name = "Test User"
-    
-    user_id = user_name.lower().replace(" ", "_")
-    
-    logger.info(f"👤 Enrolling user: {user_name}")
-    logger.info(f"🆔 User ID: {user_id}")
-    
-    # Collect enrollment data
-    collector = RealEnrollmentCollector()
+    collector = BiometricDataCollector()
     samples = collector.collect_enrollment_data(user_name)
-    
+
+    # --- NEW: Check if samples were collected ---
     if not samples:
-        logger.error("❌ Enrollment failed - no data collected")
-        return False
+        print("❌ No samples collected. Enrollment failed for this user.")
+        return
+
+    # --- FIX: Call the correct enrollment method ---
+    # The enroll_user_with_samples method takes user_id, name, and samples.
+    # We'll use user_name for both user_id and name for simplicity.
+    matcher.enroll_user_with_samples(user_name, user_name, samples)
     
-    # Enroll user
-    try:
-        profile = matcher.enroll_user_with_samples(user_id, user_name, samples)
-        
-        logger.info("🎉 Enrollment Success!")
-        logger.info(f"✅ Profile created for: {profile.name}")
-        logger.info(f"💓 Baseline: {profile.heart_rate_baseline:.1f} BPM")
-        logger.info(f"📊 Range: {profile.heart_rate_range[0]:.1f} - {profile.heart_rate_range[1]:.1f} BPM")
-        logger.info(f"🎯 Confidence threshold: {profile.confidence_threshold:.0%}")
-        
-        # Test the matcher
-        logger.info("\n🧪 Testing biometric matcher...")
-        
-        # Add some samples for testing
-        test_samples = samples[-5:]  # Use last 5 samples
-        for sample in test_samples:
-            matcher.add_sample(sample)
-        
-        # Try to find a match
-        match_result = matcher.find_best_match(presence_detected=True)
-        
-        if match_result:
-            logger.info(f"✅ Test match successful!")
-            logger.info(f"🎯 Matched: {match_result.name} ({match_result.confidence:.1%})")
-        else:
-            logger.warning("⚠️ Test match failed - you may need to adjust thresholds")
-        
-        logger.info("\n🎯 Real biometric enrollment complete!")
-        logger.info("📍 Walk near your sensor to trigger authentication")
-        
-        return True
-        
-    except Exception as e:
-        logger.error(f"❌ Enrollment error: {e}")
-        return False
+    # --- REMOVED: matcher.save_profiles() is no longer needed ---
+    # The enroll_user_with_samples method handles saving the profile to the database.
+
+    print(f"✅ Enrollment complete for: {user_name}")
 
 def main():
-    """Main enrollment function"""
-    
-    print("🫀 Presient Real Biometric Enrollment")
-    print("=====================================")
-    print()
-    print("This will:")
-    print("✅ Reset the biometric database")
-    print("✅ Collect your real heart rate data from MR60BHA2 sensor")
-    print("✅ Create your biometric profile for authentication")
-    print()
-    
-    # Check if user wants to proceed
-    response = input("Ready to start? (y/n): ").strip().lower()
-    if response != 'y':
-        print("❌ Enrollment cancelled")
-        return
-    
-    # Check MQTT connectivity first
-    print("\n🔍 Checking MR60BHA2 sensor connectivity...")
-    
-    try:
-        test_client = mqtt.Client(client_id="presient_test_connection")
-        test_client.connect("192.168.1.135", 1883, 10)
-        test_client.disconnect()
-        print("✅ MQTT broker connection successful")
-    except Exception as e:
-        print(f"❌ Cannot connect to MQTT broker: {e}")
-        print("Please ensure:")
-        print("  1. Mosquitto MQTT broker is running")
-        print("  2. Your MR60BHA2 sensor is connected and publishing data")
-        return
-    
-    # Run enrollment
-    success = reset_database_and_enroll()
-    
-    if success:
-        print("\n🎉 SUCCESS! Your real biometric profile is ready!")
-        print("\nNext steps:")
-        print("1. Restart your Presient backend")
-        print("2. Walk near your MR60BHA2 sensor")
-        print("3. Watch for Ring-style notifications!")
+    parser = argparse.ArgumentParser(description="Presient Multi-User Enrollment Script")
+    parser.add_argument("--reset", action="store_true", help="Reset all profiles before enrolling")
+    args = parser.parse_args()
+
+    print("📊 Multi-User Real Biometric Enrollment")
+    print("======================================")
+
+    matcher = RealBiometricMatcher()
+
+    if args.reset:
+        matcher.clear_profiles()
+        print("🗑️ All existing profiles cleared.")
     else:
-        print("\n❌ Enrollment failed. Please check your sensor setup.")
+        print(f"✅ {len(matcher.profiles)} existing profiles loaded.")
+
+    while True:
+        enroll_user_flow(matcher)
+        again = input("➕ Enroll another user? (y/N): ").strip().lower()
+        if again != 'y':
+            break
+
+    print("\n🏠 Enrollment session complete.")
 
 if __name__ == "__main__":
     main()
